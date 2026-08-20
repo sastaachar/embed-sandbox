@@ -433,7 +433,12 @@ body.interactive [id^="tsEmbed-pre-render-wrapper"] { pointer-events: auto; }
 .action-type { font-weight: 600; }
 .actions-editor .dlg-row { gap: 6px; flex-wrap: wrap; }
 .actions-editor .dlg-row button, .add-more { font-size: 12px; padding: 3px 8px; }
-textarea.mono { font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+textarea.mono {
+  font-family: ui-monospace, Menlo, monospace; font-size: 12px;
+  /* A payload does not fit in three fixed lines: readable, scrollable, resizable. */
+  min-height: 90px; max-height: 300px; overflow: auto;
+  resize: vertical; white-space: pre; line-height: 1.5;
+}
 
 /* ------------------------------------------------------------------ code view */
 .code-pane { display: flex; flex-direction: column; min-width: 0; }

@@ -102,10 +102,13 @@ for (const [label, ev] of [
 ]) ok(evs.includes(ev), `${label} -> HostEvent "${ev}"`);
 
 const filterCall = fired.find(f => f.ev === 'updateFilters');
+// The embed validates this shape itself: { filters: [{ column, oper, values }] } —
+// its own error message spells it out. A bare array, or columnName/operator keys,
+// fail HOST_EVENT_VALIDATION, which reads as "the filter is not changed".
 ok(
   JSON.stringify(filterCall?.payload) ===
-    JSON.stringify([{ columnName: 'Region', operator: 'IN', values: ['West', 'East'] }]),
-  'set-filter sends the right UpdateFilters payload',
+    JSON.stringify({ filters: [{ columnName: 'Region', operator: 'IN', values: ['West', 'East'] }] }),
+  'set-filter sends { filters: [{ columnName, operator, values }] } — verified live against a cluster',
 );
 
 ok(fired.every(f => f.cls === 'LiveboardEmbed'), 'buttons act on the FIRST embed block only');

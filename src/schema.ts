@@ -778,7 +778,7 @@ function legacyButtonActions(btn: ButtonSpec): EmbedAction[] {
     case 'save': return [hostEvent('Save')];
     case 'download-pdf': return [hostEvent('DownloadAsPdf')];
     case 'set-filter':
-      return [hostEvent('UpdateFilters', [{ columnName: btn.column, operator: 'IN', values: btn.values }])];
+      return [hostEvent('UpdateFilters', { filters: [{ columnName: btn.column, operator: 'IN', values: btn.values }] })];
     case 'set-value': return [{ type: 'set', params: { key: btn.key, value: btn.value } }];
     case 'open-modal': return [{ type: 'open-modal', params: { name: btn.modal } }];
     case 'close-modal':

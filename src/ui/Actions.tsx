@@ -70,7 +70,7 @@ function JsonField({ label, value, onCommit, hint }: {
   return (
     <Field label={label}>
       <textarea
-        rows={3}
+        rows={6}
         className="mono"
         value={text}
         placeholder="(none)"
@@ -162,7 +162,7 @@ function ActionRow(props: {
           <JsonField
             label="Payload (optional)"
             value={p.payload}
-            hint='Leave empty for events that take none. UpdateFilters wants a list, e.g. [{"columnName":"Region","operator":"IN","values":["West"]}]'
+            hint='Leave empty for events that take none. UpdateFilters wants {"filters":[{"columnName":"Color","operator":"IN","values":["blue"]}]}'
             onCommit={(v) => set({ payload: v })}
           />
         </>

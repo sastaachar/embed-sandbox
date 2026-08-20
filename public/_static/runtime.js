@@ -1116,7 +1116,7 @@
           btn,
           trigger(
             'UpdateFilters',
-            [{ columnName: item.column, operator: 'IN', values: item.values }],
+            { filters: [{ columnName: item.column, operator: 'IN', values: item.values }] },
             buttonTargets(item),
             scope,
           ),

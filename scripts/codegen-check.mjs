@@ -84,7 +84,7 @@ ok(cdn.includes('fullHeight: true'), 'fullHeight carried through');
 // ---- buttons -> HostEvents, nav excluded ----
 ok(cdn.includes('HostEvent.Reload'), 'reload maps to HostEvent.Reload');
 ok(cdn.includes('HostEvent.UpdateFilters'), 'set-filter maps to HostEvent.UpdateFilters');
-ok(cdn.includes('"columnName": "Region"') || cdn.includes('columnName: "Region"'),
+ok(cdn.includes('columnName') && cdn.includes('filters'),
   'set-filter payload is emitted');
 ok(!cdn.includes("HostEvent.undefined"), 'nav/open-url buttons produce no HostEvent');
 

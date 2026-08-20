@@ -44,7 +44,7 @@ const PAGE_SCHEMA_DOC = `A page is JSON:
         ]},
         { "label": "West", "actions": [
             { "type": "HostEvent", "params": { "type": "UpdateFilters", "targets": ["main", 1],
-                "payload": [{ "columnName": "Region", "operator": "IN", "values": ["West"] }] } }
+                "payload": { "filters": [{ "columnName": "Region", "operator": "IN", "values": ["West"] }] } } }
         ]},
         { "label": "Detail", "actions": [{ "type": "nav", "params": { "to": "/sales/q3" } }] }
     ]},
