@@ -1,0 +1,129 @@
+{
+  "$comment": "The single source of truth for the builder's editable surface. The palette, the embed-type picker and every properties field are rendered from this file — nothing about them is hardcoded in the components. Adding an SDK param means adding an entry here, and it appears in the UI, in the MCP tool description, and in the JSON the document API accepts.",
+  "version": 1,
+
+  "palette": [
+    { "label": "Embed", "chooseType": true, "block": { "type": "embed", "embed": { "type": "liveboard", "config": {} } } },
+    { "label": "Row: 2 side by side", "block": { "type": "row", "columns": [{ "blocks": [] }, { "blocks": [] }] } },
+    { "label": "Heading", "block": { "type": "heading", "text": "Heading", "level": 2 } },
+    { "label": "Text", "block": { "type": "text", "text": "Some copy." } },
+    { "label": "Buttons", "block": { "type": "buttons", "items": [{ "label": "Reload", "action": "reload" }] } },
+    { "label": "Value", "block": { "type": "value", "key": "answerId", "label": "Answer" } },
+    { "label": "Divider", "block": { "type": "divider" } },
+    { "label": "Spacer", "block": { "type": "spacer", "size": "24px" } }
+  ],
+
+  "blockFields": {
+    "heading": [
+      { "key": "text", "label": "Text", "kind": "text" },
+      { "key": "level", "label": "Level", "kind": "select", "options": [["1", "H1"], ["2", "H2"], ["3", "H3"]], "number": true }
+    ],
+    "text": [{ "key": "text", "label": "Text", "kind": "textarea" }],
+    "spacer": [{ "key": "size", "label": "Size", "kind": "text" }],
+    "value": [
+      { "key": "key", "label": "Store key", "kind": "text" },
+      { "key": "label", "label": "Label", "kind": "text" }
+    ],
+    "row": [
+      { "key": "columns", "label": "Columns", "kind": "columns", "max": 4 },
+      { "key": "align", "label": "Vertical align", "kind": "select", "options": [["", "top"], ["center", "center"], ["stretch", "stretch"]] }
+    ],
+    "buttons": [{ "key": "items", "label": "Buttons", "kind": "json" }],
+    "divider": []
+  },
+
+  "embedCommon": [
+    { "key": "fullHeight", "label": "Full height", "kind": "checkbox", "in": "config", "note": "Sizes the iframe to its content, so Height does not apply." },
+    { "key": "height", "label": "Height", "kind": "length", "default": "340px", "hideWhen": "fullHeight" },
+    { "key": "width", "label": "Width", "kind": "length", "placeholder": "full width" },
+    { "key": "preRender", "label": "Pre-render", "kind": "checkbox" }
+  ],
+
+  "embedTypes": [
+    {
+      "type": "liveboard",
+      "label": "Liveboard",
+      "blurb": "A whole liveboard, or one viz from it.",
+      "idKey": "liveboardId",
+      "metadataType": "LIVEBOARD",
+      "fields": [
+        { "key": "liveboardId", "label": "liveboardId", "kind": "metadata", "metadataType": "LIVEBOARD" },
+        { "key": "activeTabId", "label": "activeTabId", "kind": "text", "advanced": true },
+        { "key": "hideTabPanel", "label": "hideTabPanel", "kind": "checkbox", "advanced": true }
+      ]
+    },
+    {
+      "type": "viz",
+      "label": "Visualization",
+      "blurb": "A single chart or table from a liveboard.",
+      "idKey": "liveboardId",
+      "metadataType": "LIVEBOARD",
+      "fields": [
+        { "key": "liveboardId", "label": "liveboardId", "kind": "metadata", "metadataType": "LIVEBOARD" },
+        { "key": "vizId", "label": "vizId", "kind": "text" }
+      ]
+    },
+    {
+      "type": "search",
+      "label": "Search",
+      "blurb": "The full search experience over a data source.",
+      "idKey": "dataSource",
+      "metadataType": "LOGICAL_TABLE",
+      "fields": [
+        { "key": "dataSource", "label": "dataSource", "kind": "metadata", "metadataType": "LOGICAL_TABLE" },
+        { "key": "searchOptions", "label": "searchOptions", "kind": "json", "advanced": true },
+        { "key": "hideDataSources", "label": "hideDataSources", "kind": "checkbox", "advanced": true }
+      ]
+    },
+    {
+      "type": "searchbar",
+      "label": "Search bar",
+      "blurb": "Just the bar, for a compact ask box.",
+      "idKey": "dataSource",
+      "metadataType": "LOGICAL_TABLE",
+      "fields": [
+        { "key": "dataSource", "label": "dataSource", "kind": "metadata", "metadataType": "LOGICAL_TABLE" },
+        { "key": "searchOptions", "label": "searchOptions", "kind": "json", "advanced": true }
+      ]
+    },
+    {
+      "type": "app",
+      "label": "Full app",
+      "blurb": "The whole ThoughtSpot app, on a chosen page.",
+      "idKey": "pageId",
+      "metadataType": null,
+      "fields": [
+        { "key": "pageId", "label": "pageId", "kind": "select", "options": [["Home", "Home"], ["Search", "Search"], ["Answers", "Answers"], ["Liveboards", "Liveboards"], ["Data", "Data"], ["SpotIQ", "SpotIQ"]] },
+        { "key": "showPrimaryNavbar", "label": "showPrimaryNavbar", "kind": "checkbox", "advanced": true }
+      ]
+    },
+    {
+      "type": "spotter",
+      "label": "Spotter",
+      "blurb": "Conversational analytics on a worksheet.",
+      "idKey": "worksheetId",
+      "metadataType": "LOGICAL_TABLE",
+      "fields": [
+        { "key": "worksheetId", "label": "worksheetId", "kind": "metadata", "metadataType": "LOGICAL_TABLE" },
+        { "key": "searchOptions", "label": "searchOptions", "kind": "json", "advanced": true }
+      ]
+    },
+    {
+      "type": "conversation",
+      "label": "Conversation",
+      "blurb": "The older conversational embed.",
+      "idKey": "worksheetId",
+      "metadataType": "LOGICAL_TABLE",
+      "fields": [
+        { "key": "worksheetId", "label": "worksheetId", "kind": "metadata", "metadataType": "LOGICAL_TABLE" }
+      ]
+    }
+  ],
+
+  "siteFields": [
+    { "key": "name", "label": "Project name", "kind": "text" },
+    { "key": "thoughtSpotHost", "label": "ThoughtSpot host", "kind": "text" },
+    { "key": "sdkVersion", "label": "SDK version", "kind": "text", "placeholder": "latest" },
+    { "key": "authType", "label": "Auth type", "kind": "select", "options": [["None", "None"], ["EmbeddedSSO", "EmbeddedSSO"], ["SAMLRedirect", "SAMLRedirect"], ["OIDCRedirect", "OIDCRedirect"], ["TrustedAuthToken", "TrustedAuthToken"], ["TrustedAuthTokenCookieless", "TrustedAuthTokenCookieless"]] }
+  ]
+}

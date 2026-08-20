@@ -1,0 +1,30 @@
+{
+  "name": "embed-sandbox",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Shareable, agent-editable ThoughtSpot embed showcases on Cloudflare Workers + D1",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p src/ui",
+    "db:init": "wrangler d1 migrations apply embed-sandbox --local",
+    "db:init:remote": "wrangler d1 migrations apply embed-sandbox --remote",
+    "tail": "wrangler tail",
+    "build:ui": "esbuild src/ui/index.tsx --bundle --minify --format=iife --target=es2019 --outfile=public/_static/builder.js --loader:.css=css",
+    "dev:ui": "esbuild src/ui/index.tsx --bundle --format=iife --target=es2019 --outfile=public/_static/builder.js --loader:.css=css --watch"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20260817.1",
+    "@types/culori": "4.0.1",
+    "@types/react": "19.2.7",
+    "@types/react-dom": "19.2.4",
+    "esbuild": "0.28.2",
+    "typescript": "7.0.2",
+    "wrangler": "4.123.0"
+  },
+  "dependencies": {
+    "culori": "4.0.2",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  }
+}

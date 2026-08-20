@@ -1,0 +1,362 @@
+import React, { useEffect, useState } from 'react';
+import type { Connection, EmbedType } from './types';
+import { Field, Modal } from './Modal';
+import {
+  clearCluster, clusterHint, clusterHost, clusterReady, clusterSearch, clusterSecret,
+  clusterSecretType, clusterToken, clusterUsername, setCluster,
+} from './cluster';
+import { type MetadataItem } from './api';
+import spec from './spec.json';
+
+const EMBED_TYPES = (spec as any).embedTypes as Array<{ type: EmbedType; label: string; blurb: string }>;
+const AUTH_TYPES = ((spec as any).siteFields as Array<any>)
+  .find((f) => f.key === 'authType').options as Array<[string, string]>;
+
+export function TypePicker({ onPick, onClose }: { onPick: (t: EmbedType) => void; onClose: () => void }) {
+  return (
+    <Modal onClose={onClose}>
+      <h3>Choose an embed type</h3>
+      <p className="dlg-note">Each type asks for different details, so this comes first.</p>
+      <div className="type-grid pick">
+        {EMBED_TYPES.map((t) => (
+          <button key={t.type} onClick={() => onPick(t.type)}>
+            <span className="nm">{t.label}</span>
+            <span className="bl">{t.blurb}</span>
+          </button>
+        ))}
+      </div>
+      <div className="dlg-row"><button onClick={onClose}>Cancel</button></div>
+    </Modal>
+  );
+}
+
+export function MetadataPicker(props: {
+  metadataType: string;
+  onPick: (id: string) => void;
+  onClose: () => void;
+}) {
+  const [items, setItems] = useState<MetadataItem[] | null>(null);
+  const [note, setNote] = useState('loading…');
+  const [q, setQ] = useState('');
+
+  useEffect(() => {
+    let live = true;
+    const run = async () => {
+      setItems(null);
+      setNote('loading…');
+      // Straight at the cluster from this tab, always. A Worker at the edge cannot reach
+      // a private-IP or self-signed cluster, so there is no server-side path to fall back to.
+      if (!clusterReady()) {
+        if (live) {
+          setItems([]);
+          setNote('Not connected to a cluster yet — use “Connect cluster” in the toolbar, then this ' +
+            'lists your real objects. Meanwhile you can paste an id.');
+        }
+        return;
+      }
+      try {
+        const found = await clusterSearch(props.metadataType, q);
+        if (live) { setItems(found); setNote(found.length ? '' : 'nothing found'); }
+      } catch (err) {
+        if (!live) return;
+        setItems([]);
+        setNote(clusterHint(err));
+      }
+    };
+    const t = setTimeout(run, q ? 250 : 0);
+    return () => { live = false; clearTimeout(t); };
+  }, [q, props.metadataType]);
+
+  return (
+    <Modal onClose={props.onClose}>
+      <h3>Pick a {props.metadataType.toLowerCase().replace('_', ' ')}</h3>
+      <input placeholder="filter by name…" value={q} onChange={(e) => setQ(e.target.value)} />
+      <div className="pick">
+        {items === null || note ? <p className="dlg-note">{note}</p> : null}
+        {(items || []).map((item) => (
+          <button key={item.id} onClick={() => { props.onPick(item.id); props.onClose(); }}>
+            <div className="nm">{item.name}</div>
+            <div className="gid">{item.id}</div>
+          </button>
+        ))}
+      </div>
+      <div className="dlg-row"><button onClick={props.onClose}>Cancel</button></div>
+    </Modal>
+  );
+}
+
+export function ConnectDialog(props: {
+  defaultHost: string;
+  defaultAuthType: string;
+  /** Forgetting the credential changes what init() needs, same as connecting. */
+  onCredentialChange: () => void;
+  /** Only the host reaches the backend — the credential never leaves this tab. */
+  publishedCredential: boolean;
+  onSave: (
+    host: string | null,
+    hostChanged: boolean,
+    loggedIn: boolean,
+    authType: string,
+    /** Put username+secret in the public page config so it can mint for itself. */
+    publishCredential: { username: string; secret: string; secretType: string } | null,
+  ) => Promise<void>;
+  onClose: () => void;
+}) {
+  const conn = clusterReady();
+  const [host, setHost] = useState(clusterHost() || props.defaultHost || '');
+  const [username, setUsername] = useState(clusterUsername());
+  // Prefilled from the tab's stored credential so a saved connection reads as saved.
+  // Blank with a *** placeholder means only the server holds it — type to replace.
+  const [secret, setSecret] = useState(clusterSecret());
+  const [secretType, setSecretType] = useState<'password' | 'secret_key'>(clusterSecretType());
+  const [authType, setAuthType] = useState(props.defaultAuthType || 'None');
+  // Off by default: turning it on publishes the secret to everyone with the link.
+  const [publish, setPublish] = useState(props.publishedCredential);
+  const [msg, setMsg] = useState<{ text: string; kind: string }>({ text: '', kind: 'dlg-note' });
+  const [busy, setBusy] = useState(false);
+
+  const go = async () => {
+    if (!host || !username || (!secret && !conn)) {
+      setMsg({ text: 'Host, username and the password/secret key are all needed.', kind: 'dlg-err' });
+      return;
+    }
+    setBusy(true);
+    setMsg({ text: 'logging in…', kind: 'dlg-note' });
+    const hostChanged = trim(props.defaultHost) !== trim(host);
+    // The login happens from this tab, which is what can actually see the cluster.
+    // Saving to the Worker is separate and does not gate on it.
+    if (secret) setCluster(host, username, secret, secretType);
+    let loggedIn = false;
+    try {
+      if (secret) { await clusterToken(); loggedIn = true; }
+    } catch (err) {
+      setMsg({ text: `Could not log in: ${clusterHint(err)}`, kind: 'dlg-note' });
+    }
+    try {
+      const publishing = publish && username && (secret || clusterSecret());
+      await props.onSave(host, hostChanged, loggedIn, authType, publishing
+        ? { username, secret: secret || clusterSecret(), secretType }
+        : null);
+      if (loggedIn) {
+        setMsg({ text: `Connected as ${username}.`, kind: 'dlg-ok' });
+        setTimeout(props.onClose, 700);
+      }
+    } catch (err) {
+      setMsg({ text: (err as Error).message, kind: 'dlg-err' });
+    }
+    setBusy(false);
+  };
+
+  return (
+    <Modal onClose={props.onClose}>
+      <h3>{conn ? 'init()' : 'init() — connect a cluster'}</h3>
+      <p className="dlg-note">
+        Saved as soon as you click Connect. This host becomes the demo{'’'}s ThoughtSpot host as
+        well, so changing it repoints the embeds. Auth type is what the demo passes to the SDK{'’'}s
+        init(); the username and secret below are only used to log in from this tab. The secret is
+        stored server-side and is never returned to the browser.
+      </p>
+      <Field label="Cluster host">
+        <input value={host} placeholder="https://acme.thoughtspot.cloud"
+          onChange={(e) => setHost(e.target.value)} />
+      </Field>
+      <Field label="Username">
+        <input value={username} placeholder="embed_user" onChange={(e) => setUsername(e.target.value)} />
+      </Field>
+      <Field label="Auth type">
+        <select value={authType} onChange={(e) => setAuthType(e.target.value)}>
+          {AUTH_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+        </select>
+      </Field>
+      <Field label="Credential type">
+        <select value={secretType} onChange={(e) => setSecretType(e.target.value as 'password' | 'secret_key')}>
+          <option value="password">Password</option>
+          <option value="secret_key">Secret key</option>
+        </select>
+      </Field>
+      <Field label="Password or secret key">
+        <input type="password" value={secret}
+          placeholder={conn ? '***' : ''}
+          onChange={(e) => setSecret(e.target.value)} />
+      </Field>
+      {clusterReady() && (
+        <p className="dlg-note">
+          This tab is logged in, so the pickers list real objects. It is remembered for
+          this tab only.{' '}
+          <button className="linky" onClick={() => {
+            clearCluster();
+            setSecret('');
+            props.onCredentialChange();
+            setMsg({ text: 'Cluster credential forgotten for this tab.', kind: 'dlg-note' });
+          }}>
+            Forget cluster
+          </button>
+        </p>
+      )}
+      <label className="checkline">
+        <input
+          id="publishCred"
+          type="checkbox"
+          checked={publish}
+          onChange={(e) => setPublish(e.target.checked)}
+        />
+        Let the published site log in with these credentials
+      </label>
+      <p className={publish ? 'dlg-err' : 'dlg-note'}>
+        {publish
+          ? `Anyone who opens /p/… can read ${username || 'this user'}’s ${
+            secretType === 'secret_key' ? 'secret key' : 'password'}. It is written into the page config. Demo only.`
+          : 'Without this the published site cannot authenticate on its own — use an authType that needs no token (None, EmbeddedSSO, SAMLRedirect, OIDCRedirect), or point auth.tokenEndpoint at a token service.'}
+      </p>
+      {msg.text && <p className={msg.kind}>{msg.text}</p>}
+      <div className="dlg-row">
+        <button onClick={props.onClose}>Cancel</button>
+        {conn && (
+          <button className="danger" onClick={async () => { await props.onSave(null, false, false, authType, null); props.onClose(); }}>
+            Disconnect
+          </button>
+        )}
+        <button className="primary" disabled={busy} onClick={go}>Connect</button>
+      </div>
+    </Modal>
+  );
+}
+
+function trim(u: string) {
+  let h = String(u || '');
+  while (h.endsWith('/')) h = h.slice(0, -1);
+  return h;
+}
+
+export function PromptDialog(props: {
+  title: string;
+  initial: string;
+  confirmLabel: string;
+  danger?: boolean;
+  onConfirm: (value: string) => void;
+  onClose: () => void;
+}) {
+  const [value, setValue] = useState(props.initial);
+  return (
+    <Modal onClose={props.onClose}>
+      <h3>{props.title}</h3>
+      <input value={value} onChange={(e) => setValue(e.target.value)} autoFocus />
+      <div className="dlg-row">
+        <button onClick={props.onClose}>Cancel</button>
+        <button className={props.danger ? 'danger' : 'primary'} onClick={() => props.onConfirm(value)}>
+          {props.confirmLabel}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+export function ConfirmDialog(props: {
+  title: string;
+  confirmLabel: string;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <Modal onClose={props.onClose}>
+      <h3>{props.title}</h3>
+      <div className="dlg-row">
+        <button onClick={props.onClose} autoFocus>Cancel</button>
+        <button className="danger" onClick={props.onConfirm}>{props.confirmLabel}</button>
+      </div>
+    </Modal>
+  );
+}
+
+const CATALOG_TYPES = ['LIVEBOARD', 'ANSWER', 'LOGICAL_TABLE'];
+
+/**
+ * Everything an agent needs to take over this project, in one place: where to point its
+ * MCP client, the token that authorises writes, and a catalog sync — because the agent
+ * has no browser and nothing server-side can reach the cluster, so real ids can only
+ * come from here.
+ */
+export function BuildWithAiDialog(props: {
+  projectId: string;
+  editToken: string;
+  catalogCount: number;
+  syncedAt: number | null;
+  onSync: (items: Array<{ id: string; name: string; type: string }>) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [msg, setMsg] = useState<{ text: string; kind: string }>({ text: '', kind: 'dlg-note' });
+  const [busy, setBusy] = useState(false);
+  // One server for every project: added once, then each call names its project.
+  const mcpUrl = `${location.origin}/mcp`;
+  const prompt =
+    `Add this MCP server: ${mcpUrl}\n` +
+    `Then build a ThoughtSpot embed demo in project ${props.projectId}.\n` +
+    `Pass projectId "${props.projectId}" and token "${props.editToken}" with every call.\n` +
+    `Use search_metadata for real ids, get_config to read, save_config to write.`;
+
+  const copy = (what: string, text: string) => {
+    navigator.clipboard.writeText(text).then(
+      () => setMsg({ text: `${what} copied.`, kind: 'dlg-ok' }),
+      () => setMsg({ text: `Could not copy — select it by hand.`, kind: 'dlg-err' }),
+    );
+  };
+
+  const sync = async () => {
+    if (!clusterReady()) {
+      setMsg({ text: 'Connect a cluster in init() first — the sync runs from this tab.', kind: 'dlg-err' });
+      return;
+    }
+    setBusy(true);
+    setMsg({ text: 'reading the cluster…', kind: 'dlg-note' });
+    try {
+      const found: Array<{ id: string; name: string; type: string }> = [];
+      for (const type of CATALOG_TYPES) {
+        const rows = await clusterSearch(type, '');
+        rows.forEach((r) => found.push({ id: r.id, name: r.name, type }));
+      }
+      await props.onSync(found);
+      setMsg({ text: `Cached ${found.length} objects. Agents can read them now.`, kind: 'dlg-ok' });
+    } catch (err) {
+      setMsg({ text: clusterHint(err), kind: 'dlg-err' });
+    }
+    setBusy(false);
+  };
+
+  return (
+    <Modal onClose={props.onClose}>
+      <h3>Build with AI</h3>
+      <p className="dlg-note">
+        Point an agent at this project over MCP and ask it to build the pages. It edits the
+        same document the builder does, and the canvas follows along live.
+      </p>
+
+      <Field label="MCP server (add once, works for every project)">
+        <input id="mcpUrl" readOnly value={mcpUrl} onFocus={(e) => e.currentTarget.select()} />
+      </Field>
+      <Field label="Project id">
+        <input id="mcpProject" readOnly value={props.projectId} onFocus={(e) => e.currentTarget.select()} />
+      </Field>
+      <Field label="Edit token">
+        <input id="mcpToken" readOnly value={props.editToken} onFocus={(e) => e.currentTarget.select()} />
+      </Field>
+      <div className="dlg-row">
+        <button onClick={() => copy('MCP server', mcpUrl)}>Copy server</button>
+        <button onClick={() => copy('Edit token', props.editToken)}>Copy token</button>
+        <button className="primary" onClick={() => copy('Prompt', prompt)}>Copy prompt</button>
+      </div>
+
+      <p className="dlg-note">
+        {props.catalogCount
+          ? `${props.catalogCount} objects cached${props.syncedAt ? ` — synced ${new Date(props.syncedAt).toLocaleString()}` : ''}.`
+          : 'No objects cached yet. Without this an agent has no way to learn real ids: it has no browser, and nothing server-side can reach your cluster.'}
+      </p>
+      {msg.text && <p className={msg.kind}>{msg.text}</p>}
+      <div className="dlg-row">
+        <button onClick={props.onClose}>Close</button>
+        <button className="primary" id="syncCatalog" disabled={busy} onClick={sync}>
+          {props.catalogCount ? 'Re-sync from cluster' : 'Sync from cluster'}
+        </button>
+      </div>
+    </Modal>
+  );
+}
