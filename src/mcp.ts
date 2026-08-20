@@ -131,6 +131,144 @@ version works with no rebuild — use an exact version like "1.51.0", or "latest
 authType: None | EmbeddedSSO | Cookieless | TrustedAuthTokenCookieless.
 embedDefaults is merged underneath every page's embed config.`;
 
+/**
+ * The whole contract, written for an agent with NO other context. Served on GET /mcp
+ * and summarised in initialize.instructions — if knowledge matters, it lives here.
+ */
+export const MANUAL = `# embed-sandbox MCP server
+
+Builds shareable ThoughtSpot embed demo sites. Pages are JSON documents rendered by a
+14KB runtime — you never write HTML or JS. The published site updates live: viewers'
+pages re-render within ~5s of any save, and the visual builder follows along too.
+
+## Connecting
+
+Added once at /mcp, this server works on every project: pass projectId and token with
+each tool call. Mounted at /mcp/<projectId>, both are implied (token in the
+Authorization header). Tokens are per project, shown once at create_project, and
+required for every write; reads are public because sharing is the point.
+
+## The workflow that works
+
+1. create_project → returns projectId, editToken (SAVE IT — shown once), and every URL.
+2. save_config with config.auth credentials if you have them (see Auth) — then
+3. search_metadata → real liveboard/answer/worksheet ids, never guess ids.
+4. save_config with the whole document: config + pages keyed by path.
+5. get_graph → check pages connect and nothing dangles. get_code → show the human
+   real SDK code. get_urls → hand over links.
+
+Small edits: get_page / set_page (replace, not merge). Whole-document edits:
+get_config / save_config. set_site merges config; save_config and set_page replace.
+
+## The document
+
+{ config: {...}, pages: { "/": {...}, "/sales/q3": {...} } } — paths nest freely.
+
+config: name, thoughtSpotHost, sdkVersion (any npm version, default latest), authType,
+auth, theme, css, header, footer, embedDefaults, modals, catalog, showEmbedErrors,
+themeEmbed (default true: pushes the theme into embeds as --ts-var-*), live
+(default true: published pages poll /version and re-render on change).
+
+theme tokens: colorPrimary, colorPrimaryText, colorBg, colorSurface, colorText,
+colorMuted, colorBorder, fontFamily, fontHeading, radius, maxWidth, headerHeight,
+space. css (site) and page.css are raw CSS; useful classes: .sb-header, .sb-nav,
+.sb-footer, .sb-heading, .sb-text, .sb-embed, .sb-value, .sb-btn[data-variant],
+.sb-divider, .sb-row, .sb-col, .sb-note.
+
+header/footer: { show, title, subtitle, logoUrl, sticky, align: left|center|split,
+nav: [{ label, to|url }], links: [...], text }.
+
+page: { title, css, modals, blocks: [...] }.
+
+## Blocks
+
+heading { text, level 1|2|3 } · text { text } · divider · spacer { size }
+value { key, label } — shows a value-store key, updates live
+buttons { align, items: [{ label, variant primary|secondary|ghost, actions: [...] }] }
+row { gap, align, columns: [{ span, blocks }] } — rows cannot nest inside columns
+embed — see below. Any block takes style (inline CSS escape hatch).
+{{key}} interpolates the value store into any text, dotted paths allowed.
+
+## Embeds
+
+{ type: liveboard|viz|search|searchbar|app|spotter|conversation,
+  name,            // how actions address it; defaults to page index
+  height, width,   // the box on the page; fullHeight goes in config
+  preRender, config: {...}, embedEventHandlers: [...] }
+
+config is the SDK constructor config passed through WHOLE — liveboardId, vizId,
+worksheetId, dataSource, searchOptions, fullHeight, hiddenActions, visibleActions,
+customizations, locale, anything the SDK takes now or later.
+
+### Pre-render (exact contract)
+
+preRender: true marks the SDK's PreRendered<X>Embed: it loads in the background,
+renders nothing visible, and REQUIRES config.preRenderId. A normal embed carrying the
+same preRenderId attaches to that iframe when shown — instant paint. With liveboardId
+on the preRender block it pre-fetches that board; without, it loads the generic shell
+and the visible embed navigates it. One preRenderId can be shared by embeds on
+different pages (that is the point, and also how filter-state bugs are reproduced).
+
+## Actions — one vocabulary for buttons and events
+
+{ type, params }:
+  nav         { to }
+  open-url    { url, target? }
+  set         { key, value } — on a BUTTON value is a literal; in an EVENT HANDLER it
+              is a path into the event payload ("payload.data.id", blank = whole payload)
+  open-modal  { name } · close-modal { name? }
+  HostEvent   { type, payload?, targets?, store? }
+    targets: embed names/indices, "all", or omitted = first embed on the page
+    store: value-store key that receives the RESPONSE — GetFilters, GetParameters and
+    GetTML answer, and this is the only way to surface it on the page.
+
+UpdateFilters payload — verified against a live cluster; the embed's own error message
+describes { column, oper } and then REJECTS it, so use exactly:
+  { "filters": [{ "columnName": "Color", "operator": "IN", "values": ["blue"] }] }
+
+## Event handlers
+
+embedEventHandlers: [{ type: "Data"|"CustomAction"|any EmbedEvent, id?, actions }] —
+id filters CustomAction by its callback id. A set action then reads the payload:
+  { type: "Data", actions: [{ type: "set", params: { key: "orderId",
+    value: "payload.data.id" } }] }
+Read back anywhere with {{orderId}}, a value block, or window.<namespace>.getVariable().
+
+## Auth — what a PUBLISHED page can use
+
+The page is public; the backend stores app config only and never talks to a cluster.
+  authType None — works if the cluster allows anonymous embed.
+  EmbeddedSSO / SAMLRedirect / OIDCRedirect — the visitor authenticates.
+  TrustedAuthToken(Cookieless) + auth: { tokenSource: "credentials", username, secret,
+    secretType } — THE PAGE mints its own token from the cluster. The secret is in the
+    public config, readable by anyone with the link: demo-only, say so to the human.
+  auth: { tokenSource: "endpoint", tokenEndpoint, tokenMethod?, tokenField? } — the
+    page fetches a token from the human's own service.
+
+search_metadata mints server-side from auth.credentials — works when this server can
+reach the cluster (public host, or plain-HTTP port for private/self-signed clusters;
+a self-signed HTTPS port is unreachable from a Worker). Falls back to the catalog the
+builder caches from the human's browser; result says which source answered via
+"source" and "clusterReached". Empty both ways? Ask the human for ids, or to press
+Sync in the builder's "Build with AI" dialog.
+
+## Tools
+
+create_project (no token) · get_urls · get_graph (nav + shared-value edges, dangling
+links) · get_config / save_config (whole document) · get_site / set_site (config only;
+set_site MERGES) · list_pages · get_page / set_page / delete_page · fork_site ·
+get_code (path, flavor react|esm|cdn — real SDK code, PreRendered components included)
+· search_metadata (type LIVEBOARD|ANSWER|LOGICAL_TABLE, q).
+
+## Rules that bite
+
+- preRender without config.preRenderId is refused.
+- viz needs vizId beside liveboardId. liveboard/viz without an id show a placeholder.
+- connection.host must be https (or localhost). Page saves REPLACE; site saves MERGE.
+- rows cannot nest in columns. Modal names are simple identifiers.
+- The value store is per browser tab, not shared between viewers.
+`;
+
 const TOOLS = [
   {
     name: 'get_site',
@@ -575,8 +713,14 @@ export async function handleMcp(
   env: Env,
   projectId: string | null,
 ): Promise<Response> {
+  if (request.method === 'GET') {
+    // The manual, for a human in a browser or an agent probing before it connects.
+    return new Response(MANUAL, {
+      headers: { 'content-type': 'text/markdown; charset=utf-8', 'cache-control': 'no-store' },
+    });
+  }
   if (request.method !== 'POST') {
-    return new Response('MCP endpoint accepts POST', { status: 405 });
+    return new Response('MCP endpoint accepts POST or GET', { status: 405 });
   }
 
   const origin = new URL(request.url).origin;
@@ -614,14 +758,7 @@ export async function handleMcp(
           capabilities: { tools: { listChanged: false } },
           serverInfo: { name: 'embed-sandbox', version: '1.0.0' },
           instructions:
-            'Builds embed-sandbox demo sites. Pages are JSON configs rendered by the sandbox ' +
-            'runtime — you never write HTML.\n' +
-            'Added once at /mcp, it serves every project: pass projectId and token with each ' +
-            'call. Mounted at /mcp/<id> instead, both are implied and can be omitted.\n' +
-            'Start with create_project (or get_config on one you were given), then ' +
-            'search_metadata for real ids, then save_config to write the whole document at ' +
-            'once — or set_page per page. get_urls tells you where to look, get_graph shows ' +
-            'how the pages connect.',
+            MANUAL,
         }),
       );
       continue;

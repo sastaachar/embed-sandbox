@@ -13,7 +13,7 @@
     {
       "binding": "DB",
       "database_name": "embed-sandbox",
-      "database_id": "REPLACE_WITH_YOUR_D1_DATABASE_ID",
+      "database_id": "bed33a38-efc2-4276-9afe-cdfb936387a4",
       "migrations_dir": "migrations"
     }
   ]
