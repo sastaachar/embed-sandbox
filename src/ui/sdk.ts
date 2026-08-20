@@ -1,6 +1,7 @@
 import type { EmbedSpec, ProjectConfig } from './types';
 import { clusterFingerprint, clusterReady, clusterToken } from './cluster';
 import { PID } from './api';
+import { effectiveProject } from '../theme';
 
 /*
  * A pre-rendered embed lives in the SDK's body-level wrapper, so re-rendering or
@@ -16,6 +17,7 @@ let ready: Promise<AnyLib> | null = null;
 let usedKey: string | null = null;
 /** False when the loaded SDK has no AuthStatus.SUCCESS to listen for. */
 let authObservable = true;
+let embedDefaults: Record<string, unknown> = {};
 
 export function authIsObservable(): boolean {
   return authObservable;
@@ -68,6 +70,8 @@ const NEEDS_TOKEN = new Set(['TrustedAuthToken', 'TrustedAuthTokenCookieless']);
  * is reported, never treated as failure.
  */
 const AUTH_FAILED = new Set(['FAILURE', 'LOGOUT', 'SAML_POPUP_CLOSED_NO_AUTH']);
+/** A failure whose reason is expiry is a refresh, not a rejection. */
+const EXPIRY_REASON = /expir/i;
 
 /**
  * Whether init() has anything to authenticate with yet. Without this the builder inits
@@ -105,6 +109,11 @@ export function ensureSdk(
   if (ready && usedKey === key) return ready;
   releaseAll();
   usedKey = key;
+  // What the RENDERED site builds embeds from: project-level embedDefaults, with the
+  // theme folded in as --ts-var-*. The canvas used only the block's own config, which is
+  // why customisations set on the project never showed up here.
+  embedDefaults = (effectiveProject(config as any).embedDefaults ?? {}) as Record<string, unknown>;
+
   ready = new Promise((resolve, reject) => {
     const lib = (window as any).tsembed;
     if (!lib) return reject(new Error('SDK failed to load'));
@@ -159,8 +168,14 @@ export function ensureSdk(
               return;
             }
             const why = typeof reason === 'string' ? reason : reason?.type || name;
-            if (AUTH_FAILED.has(name)) {
+            // FAILURE also carries the token expiring, which is the SDK about to mint a
+            // new one — the system working. Only the reason tells the two apart.
+            if (AUTH_FAILED.has(name) && !EXPIRY_REASON.test(String(why))) {
               onAuth(`init did not authenticate — AuthStatus.${name}: ${why}`, 'err');
+              return;
+            }
+            if (AUTH_FAILED.has(name)) {
+              onAuth(`AuthStatus.${name}: ${why} — refreshing, not a failure`, 'info');
               return;
             }
             // Progress, not a verdict. Reported, but it must not repaint the button:
@@ -191,7 +206,7 @@ export function mount(loc: string, spec: EmbedSpec, host: HTMLElement, lib: AnyL
   if (!Cls) return `this SDK has no ${spec.type} embed`;
 
   const prerendered = Boolean(spec.preRender);
-  const cfg: Record<string, unknown> = { ...spec.config };
+  const cfg: Record<string, unknown> = { ...embedDefaults, ...spec.config };
   if (prerendered) cfg.preRenderId = `build-${loc.replace(/\./g, '_')}`;
   if (!cfg.fullHeight && !cfg.frameParams) {
     cfg.frameParams = { height: spec.height || '340px' };

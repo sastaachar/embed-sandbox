@@ -366,7 +366,8 @@
     (blocks || []).forEach(function (block) {
       switch (block.type) {
         case 'heading':
-          container.appendChild(styled(bindText(el('h' + (block.level || 2)), block.text), block));
+          // Classed like every other block, so page CSS can reach it by name.
+          container.appendChild(styled(bindText(el('h' + (block.level || 2), 'sb-heading'), block.text), block));
           break;
         case 'text':
           container.appendChild(styled(bindText(el('p', 'sb-text'), block.text), block));
