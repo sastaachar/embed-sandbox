@@ -92,6 +92,7 @@ export function ConnectDialog(props: {
   onCredentialChange: () => void;
   /** Only the host reaches the backend — the credential never leaves this tab. */
   publishedCredential: boolean;
+  defaultSdkVersion: string;
   onSave: (
     host: string | null,
     hostChanged: boolean,
@@ -99,6 +100,7 @@ export function ConnectDialog(props: {
     authType: string,
     /** Put username+secret in the public page config so it can mint for itself. */
     publishCredential: { username: string; secret: string; secretType: string } | null,
+    sdkVersion: string,
   ) => Promise<void>;
   onClose: () => void;
 }) {
@@ -112,6 +114,7 @@ export function ConnectDialog(props: {
   const [authType, setAuthType] = useState(props.defaultAuthType || 'None');
   // Off by default: turning it on publishes the secret to everyone with the link.
   const [publish, setPublish] = useState(props.publishedCredential);
+  const [sdkVersion, setSdkVersion] = useState(props.defaultSdkVersion || '');
   const [msg, setMsg] = useState<{ text: string; kind: string }>({ text: '', kind: 'dlg-note' });
   const [busy, setBusy] = useState(false);
 
@@ -136,7 +139,7 @@ export function ConnectDialog(props: {
       const publishing = publish && username && (secret || clusterSecret());
       await props.onSave(host, hostChanged, loggedIn, authType, publishing
         ? { username, secret: secret || clusterSecret(), secretType }
-        : null);
+        : null, sdkVersion.trim());
       if (loggedIn) {
         setMsg({ text: `Connected as ${username}.`, kind: 'dlg-ok' });
         setTimeout(props.onClose, 700);
@@ -163,6 +166,22 @@ export function ConnectDialog(props: {
       <Field label="Username">
         <input value={username} placeholder="embed_user" onChange={(e) => setUsername(e.target.value)} />
       </Field>
+      <Field label="SDK version">
+        <input
+          id="sdkVersion"
+          list="sb-sdk-versions"
+          value={sdkVersion}
+          placeholder="latest"
+          onChange={(e) => setSdkVersion(e.target.value)}
+        />
+      </Field>
+      <datalist id="sb-sdk-versions">
+        {SDK_VERSIONS.map((v) => <option key={v} value={v} />)}
+      </datalist>
+      <p className="hint">
+        Any version on jsDelivr, or a range like <code>1.51.x</code>. Changing it reloads
+        the builder — a bundle already on the page cannot be swapped for another.
+      </p>
       <Field label="Auth type">
         <select value={authType} onChange={(e) => setAuthType(e.target.value)}>
           {AUTH_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
@@ -212,7 +231,7 @@ export function ConnectDialog(props: {
       <div className="dlg-row">
         <button onClick={props.onClose}>Cancel</button>
         {conn && (
-          <button className="danger" onClick={async () => { await props.onSave(null, false, false, authType, null); props.onClose(); }}>
+          <button className="danger" onClick={async () => { await props.onSave(null, false, false, authType, null, sdkVersion.trim()); props.onClose(); }}>
             Disconnect
           </button>
         )}
@@ -267,6 +286,11 @@ export function ConfirmDialog(props: {
     </Modal>
   );
 }
+
+/** Offered, not enforced: any version jsDelivr serves works, including a range. */
+const SDK_VERSIONS = [
+  'latest', '1.51.0', '1.50.0', '1.49.1', '1.48.0', '1.45.0', '1.41.0', '1.36.3',
+];
 
 const CATALOG_TYPES = ['LIVEBOARD', 'ANSWER', 'LOGICAL_TABLE'];
 

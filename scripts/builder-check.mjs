@@ -292,10 +292,12 @@ await pg.route('**/api/rest/2.0/**', route => {
 
 await pg.click('#connect');
 await pg.waitForSelector('#mask:not([hidden])', { timeout: 5000 });
-const connInputs = pg.locator('#maskBody input');
-await connInputs.nth(0).fill(BASE);   // same host the project already has: no reload here
-await connInputs.nth(1).fill('demo_user');
-await connInputs.nth(2).fill('letmein');
+// By label, not index: the dialog gains fields over time and an index-based fill
+// silently puts the password somewhere else.
+const connField = (label) => pg.locator('#maskBody .field', { hasText: label }).locator('input');
+await connField('Cluster host').fill(BASE);   // same host the project already has: no reload here
+await connField('Username').fill('demo_user');
+await connField('Password or secret key').fill('letmein');
 await pg.locator('#maskBody button', { hasText: 'Connect' }).click();
 // The button now colours on the OUTCOME of init(): blue once a host is configured,
 // green only on AuthStatus.SUCCESS, red on any other status. A stub cluster cannot
@@ -407,10 +409,11 @@ await pg.click('#interact');
 // ---- changing the cluster host repoints the demo, and says so ----
 await pg.click('#connect');
 await pg.waitForSelector('#mask:not([hidden])', { timeout: 5000 });
-const reconn = pg.locator('#maskBody input');
-await reconn.nth(0).fill('https://other.example.test');
-await reconn.nth(1).fill('demo_user');
-await reconn.nth(2).fill('letmein');
+await connField('Cluster host').fill('https://other.example.test');
+await connField('Username').fill('demo_user');
+await connField('Password or secret key').fill('letmein');
+// the SDK version is offered here too, and picking one reloads the builder
+await connField('SDK version').fill('1.51.0');
 // "Disconnect" also contains "Connect" once a connection exists
 await pg.locator('#maskBody button.primary').click();
 // Caught as it is set: the auth emitter overwrites the status moments later, because

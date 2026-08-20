@@ -466,19 +466,25 @@ export function App() {
           defaultHost={d.config.thoughtSpotHost || ''}
           defaultAuthType={d.config.authType || 'None'}
           publishedCredential={d.config.auth?.tokenSource === 'credentials'}
+          defaultSdkVersion={String(d.config.sdkVersion || '')}
           onCredentialChange={() => setConnectEpoch((n) => n + 1)}
           onClose={() => setDialog(null)}
-          onSave={async (host, hostChanged, loggedIn, authType, publishCredential) => {
+          onSave={async (host, hostChanged, loggedIn, authType, publishCredential, sdkVersion) => {
             if (host === null) clearCluster();
             // Connecting or disconnecting changes what init() should be built from.
             setConnectEpoch((n) => n + 1);
             const authChanged = Boolean(host) && (d.config.authType || 'None') !== authType;
+            // A different bundle cannot replace one already on the page, so this is the
+            // one setting that genuinely needs a reload. Safe now that the cluster
+            // credential survives one in sessionStorage.
+            const versionChanged = Boolean(host) && String(d.config.sdkVersion || '') !== sdkVersion;
             if (host) {
               // The app's own config is all the backend holds. A credential normally
               // stays in this tab — unless it is deliberately published below, which
               // puts it in the page for the published site to mint with.
               d.config.thoughtSpotHost = host;
               d.config.authType = authType;
+              if (sdkVersion) d.config.sdkVersion = sdkVersion; else delete d.config.sdkVersion;
               if (publishCredential) {
                 d.config.auth = {
                   ...(d.config.auth || {}),
@@ -491,7 +497,10 @@ export function App() {
             }
             await save();
             await reload();
-            if (hostChanged || authChanged) {
+            if (versionChanged) {
+              setStatus(`SDK ${sdkVersion || 'latest'} — reloading to load that bundle`, 'ok');
+              setTimeout(() => location.reload(), 700);
+            } else if (hostChanged || authChanged) {
               // Re-init in place rather than location.reload(): the cluster credential
               // lives in this tab only, and a reload throws it away — which is what left
               // "Pick…" saying it was not connected right after connecting.
