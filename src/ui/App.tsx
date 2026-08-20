@@ -11,6 +11,7 @@ import {
 } from './dialogs';
 import { JsonPanel } from './JsonPanel';
 import { MapPanel } from './MapPanel';
+import { CodePanel } from './CodePanel';
 import * as sdk from './sdk';
 import spec from './spec.json';
 
@@ -43,6 +44,7 @@ export function App() {
   const [canvasEpoch, setCanvasEpoch] = useState(0);
   const [showJson, setShowJson] = useState(false);
   const [showMap, setShowMap] = useState(false);
+  const [showCode, setShowCode] = useState(false);
   // null until init() reports: AuthStatus.SUCCESS -> 'ok', any other status -> 'bad'.
   const [authState, setAuthState] = useState<'ok' | 'bad' | null>(null);
   // Bumped whenever this tab's cluster credential changes, so init() is rebuilt: the
@@ -335,10 +337,18 @@ export function App() {
           {authState === 'ok' ? '✓ Init' : 'Init'}
         </button>
         <button
+          id="code"
+          aria-pressed={showCode}
+          title="This page as SDK code you could paste into your own app"
+          onClick={() => { setShowCode((v) => !v); setShowMap(false); setShowJson(false); }}
+        >
+          Code
+        </button>
+        <button
           id="map"
           aria-pressed={showMap}
           title="Every page, and how they reach each other"
-          onClick={() => { setShowMap((v) => !v); setShowJson(false); }}
+          onClick={() => { setShowMap((v) => !v); setShowJson(false); setShowCode(false); }}
         >
           Map
         </button>
@@ -390,7 +400,9 @@ export function App() {
           ))}
         </section>
 
-        {showMap ? (
+        {showCode ? (
+          <CodePanel path={path} onClose={() => setShowCode(false)} />
+        ) : showMap ? (
           <MapPanel
             onClose={() => setShowMap(false)}
             onOpenPage={(p) => { setShowMap(false); b.setPath(p); setSel(null); render(); }}

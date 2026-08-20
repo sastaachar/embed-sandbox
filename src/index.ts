@@ -255,8 +255,8 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
     if (request.method !== 'GET') return json({ error: 'method not allowed' }, 405);
     const path = normalizePath(url.searchParams.get('path') || '/');
     const flavourParam = url.searchParams.get('flavor') || 'cdn';
-    if (flavourParam !== 'cdn' && flavourParam !== 'esm') {
-      return badRequest('flavor must be cdn or esm');
+    if (flavourParam !== 'cdn' && flavourParam !== 'esm' && flavourParam !== 'react') {
+      return badRequest('flavor must be cdn, esm or react');
     }
     const page = await getPage(env, projectId, path);
     if (!page) return json({ error: 'page not found' }, 404);
