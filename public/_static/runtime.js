@@ -553,7 +553,7 @@
       case 'close-modal':
         return closeModal();
       case 'host-event':
-        return trigger(p.hostEvent, p.data, p.targets, scope);
+        return trigger(p.hostEvent, p.data, p.targets, scope, p.store);
       default:
         console.warn('[' + NS + '] unknown action type "' + action.type + '"');
     }
@@ -809,7 +809,9 @@
       // the rect showPreRender() syncs to, so it must always be in the document
       // with real dimensions — hence the off-screen attic rather than display:none.
       atticEl.appendChild(host);
-      cfg.preRenderId = 'sb_' + keyOf(path) + '_' + idx;
+      // An authored preRenderId is the point of sharing a warm iframe between two
+      // embeds, so it wins. Ours is only the default when none is given.
+      if (!cfg.preRenderId) cfg.preRenderId = 'sb_' + keyOf(path) + '_' + idx;
       entry.embed = new Cls('#' + host.id, cfg);
       wireAll(entry.embed, spec);
       entry.embed.preRender();
@@ -885,7 +887,12 @@
     clear(wrapper);
     wrapper.appendChild(entry.host);
     if (entry.prerendered) {
-      entry.embed.showPreRender();
+      // render(), not showPreRender(). render() runs connectedToPreRendered(), which
+      // finds the wrapper by preRenderId and attaches to the already-warm iframe;
+      // showPreRender() only un-hides a wrapper and skips that connect entirely, so a
+      // second embed sharing a preRenderId never really joins the one that exists.
+      entry.embed.render();
+      entry.rendered = true;
     } else if (!entry.rendered) {
       entry.rendered = true;
       entry.embed.render();
@@ -993,7 +1000,7 @@
 
   // ------------------------------------------------------------------ actions
 
-  function trigger(name, payload, targets, scope) {
+  function trigger(name, payload, targets, scope, storeKey) {
     var embeds = embedsFor(targets, scope);
     if (!embeds.length || !sdk) return false;
     var events = sdk.HostEvent || {};
@@ -1009,10 +1016,21 @@
     var sent = false;
     embeds.forEach(function (embed) {
       try {
-        embed.trigger(events[name], payload);
+        var out = embed.trigger(events[name], payload);
         sent = true;
+        // Some host events answer — GetFilters, GetParameters, GetTML. Keeping that
+        // answer is the only way a page can show what the embed actually thinks.
+        if (storeKey && out && typeof out.then === 'function') {
+          out.then(
+            function (value) { store.set(storeKey, value === undefined ? null : value); },
+            function (err) { store.set(storeKey, { error: String((err && err.message) || err) }); },
+          );
+        } else if (storeKey) {
+          store.set(storeKey, out === undefined ? null : out);
+        }
       } catch (err) {
         console.warn('[sandbox] host event ' + name + ' failed', err);
+        if (storeKey) store.set(storeKey, { error: String((err && err.message) || err) });
       }
     });
     return sent;
@@ -1050,6 +1068,7 @@
             p.payload !== undefined ? p.payload : p.data,
             p.targets,
             scope,
+            p.store,
           ));
           break;
         default:

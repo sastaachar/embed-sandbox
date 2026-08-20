@@ -197,7 +197,7 @@ export function mount(loc: string, spec: EmbedSpec, host: HTMLElement, lib: AnyL
       release(loc);
     } else {
       if (existing.prerendered) {
-        try { existing.embed.showPreRender(); } catch { /* not yet rendered */ }
+        try { existing.embed.render(); } catch { /* not yet rendered */ }
       }
       return null;
     }
@@ -207,15 +207,19 @@ export function mount(loc: string, spec: EmbedSpec, host: HTMLElement, lib: AnyL
 
   const prerendered = Boolean(spec.preRender);
   const cfg: Record<string, unknown> = { ...embedDefaults, ...spec.config };
-  if (prerendered) cfg.preRenderId = `build-${loc.replace(/\./g, '_')}`;
+  // An authored preRenderId is deliberate — two embeds sharing one warm iframe is a
+  // thing worth being able to build, and to reproduce bugs with.
+  if (prerendered && !cfg.preRenderId) cfg.preRenderId = `build-${loc.replace(/\./g, '_')}`;
   if (!cfg.fullHeight && !cfg.frameParams) {
     cfg.frameParams = { height: spec.height || '340px' };
   }
   try {
     const embed = new Cls(`#${host.id}`, cfg);
     if (prerendered) {
+      // preRender() warms it; render() is what SHOWS it, because render() connects to
+      // an existing wrapper with this preRenderId. showPreRender() skips that.
       embed.preRender();
-      embed.showPreRender();
+      embed.render();
     } else {
       embed.render();
     }

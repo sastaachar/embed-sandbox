@@ -497,6 +497,8 @@ function validateAction(v: unknown, field: string, inEvent: boolean): EmbedActio
     const payload = params.payload ?? params.data;
     if (payload !== undefined) out.payload = payload;
     if (params.targets !== undefined) out.targets = validateTargets(params.targets, `${field}.params.targets`);
+    // GetFilters and friends answer; `store` is where that answer lands.
+    if (params.store !== undefined) out.store = valueKey(params.store, `${field}.params.store`);
   }
   return { type: type as EmbedAction['type'], params: out };
 }

@@ -71,6 +71,12 @@ function varName(key: string): string {
     .replace(/^[0-9]/, (d) => `_${d}`);
 }
 
+/** Matches what the sandbox runtime uses, so the snippet warms the same wrapper. */
+function preRenderIdFor(path: string, index: number): string {
+  const key = path.replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'root';
+  return `sb_${key}_${index}`;
+}
+
 /** "/sales/q3" -> "SalesQ3Page", so the snippet is pasteable as-is. */
 function componentName(path: string): string {
   const parts = path.split('/').filter(Boolean);
@@ -202,11 +208,15 @@ export function generateCode(
     // constructor calls.
     const comps = [...new Set(embeds.map((e) => CLASS_FOR[e.type]))];
     const reactImports = [...comps, ...(needsHostEvent ? ['useEmbedRef'] : [])];
+    const preRenderImports = [...new Set(
+      embeds.filter((e) => e.preRender).map((e) => `PreRendered${CLASS_FOR[e.type]}`),
+    )];
 
     // The whole page, not just its embeds. Chrome and blocks the SDK does not own
     // become placeholders named for what they are, so the shape is obvious and the
     // reader knows exactly which parts are theirs to write.
     let embedSeen = 0;
+    const usedPreRender = new Set<string>();
     const btnName = (label: string, i: number) =>
       `on${(label || 'Button').replace(/[^A-Za-z0-9]/g, '') || `Btn${i}`}`;
 
@@ -255,7 +265,16 @@ export function generateCode(
             const spec = block.embed;
             const cls = CLASS_FOR[spec.type];
             const cfg = embedConfigFor(spec, project, null, true) as Record<string, unknown>;
-            delete cfg.preRenderId;
+            // Pre-render is two components, not a flag: PreRendered<X>Embed warms a
+            // hidden copy, and the ordinary <X>Embed with the same preRenderId is what
+            // shows it — it connects to the warm one instead of building another.
+            if (spec.preRender) {
+              const id = (spec.config.preRenderId as string) || preRenderIdFor(path, embedSeen);
+              cfg.preRenderId = id;
+              usedPreRender.add(`PreRendered${cls}`);
+            } else {
+              delete cfg.preRenderId;
+            }
             const ref = embeds.length === 1 ? 'embedRef' : `embedRef${embedSeen + 1}`;
             embedSeen += 1;
             out.push(`${pad}<${cls}`);
@@ -280,6 +299,25 @@ export function generateCode(
     };
 
     const jsxLines = jsxFor(page.blocks, '      ');
+
+    // One warming component per pre-rendered embed, carrying the same id and config.
+    const preRenderJsx: string[] = [];
+    let warmSeen = 0;
+    walk(page.blocks, (b) => {
+      if (b.type !== 'embed' || !b.embed.preRender) return;
+      const cls = CLASS_FOR[b.embed.type];
+      const id = (b.embed.config.preRenderId as string) || preRenderIdFor(path, warmSeen);
+      warmSeen += 1;
+      const cfg = embedConfigFor(b.embed, project, null, true) as Record<string, unknown>;
+      delete cfg.preRenderId;
+      preRenderJsx.push(`      <PreRendered${cls}`);
+      preRenderJsx.push(`        preRenderId=${JSON.stringify(id)}`);
+      if (Object.keys(project.embedDefaults ?? {}).length) preRenderJsx.push('        {...embedDefaults}');
+      for (const [k, v] of Object.entries(cfg)) {
+        preRenderJsx.push(v === true ? `        ${k}` : `        ${k}={${literal(v, 8).trimStart()}}`);
+      }
+      preRenderJsx.push(`      />`);
+    });
 
     // Which embed a button drives is the point of `targets`; sending everything to the
     // first one would be a snippet that quietly does the wrong thing.
@@ -417,7 +455,7 @@ export function generateCode(
       initBody,
       '',
       `// ─── ${path} ───`,
-      `import { ${reactImports.join(', ')}${needsHostEvent ? `, HostEvent` : ''} } from '${pkg}';`,
+      `import { ${[...reactImports, ...preRenderImports].join(', ')}${needsHostEvent ? `, HostEvent` : ''} } from '${pkg}';`,
       '',
       ...defaultLines,
       '',
@@ -428,6 +466,11 @@ export function generateCode(
       `  return (`,
       `    <>`,
       ...headerJsx,
+      ...(usedPreRender.size
+        ? [`      {/* Warms the iframes off-screen. Mount once, high up — these render`,
+           `          nothing visible; the <${[...usedPreRender][0].replace('PreRendered', '')} /> below connect to them. */}`,
+           ...preRenderJsx]
+        : []),
       `      <main>`,
       ...jsxLines.map((l) => `  ${l}`),
       `      </main>`,
