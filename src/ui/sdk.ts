@@ -30,6 +30,31 @@ const CLASS_FOR: Record<string, string> = {
 export interface Slot { embed: any; host: HTMLElement; prerendered: boolean }
 const slots: Record<string, Slot> = {};
 
+/** The same mint the published page does, so the canvas matches what visitors get. */
+async function mintFromConfig(
+  host: string,
+  auth: { username: string; secret: string; secretType?: string; validitySeconds?: number },
+): Promise<string> {
+  const body: Record<string, unknown> = {
+    username: auth.username,
+    validity_time_in_sec: auth.validitySeconds ?? 300,
+  };
+  body[auth.secretType === 'secret_key' ? 'secret_key' : 'password'] = auth.secret;
+  const res = await fetch(`${sameHost(host)}/api/rest/2.0/auth/token/full`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', accept: 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !(json as any).token) {
+    throw new Error(
+      `the cluster refused the published credentials (${res.status})` +
+        (res.status === 401 || res.status === 403 ? ' — check the username and secret' : ''),
+    );
+  }
+  return (json as any).token as string;
+}
+
 /** Auth types that redirect or carry their own session: no token needed from us. */
 const SELF_AUTH = new Set(['EmbeddedSSO', 'SAMLRedirect', 'OIDCRedirect']);
 /** Auth types that cannot init without a getAuthToken. */
@@ -52,7 +77,8 @@ const AUTH_FAILED = new Set(['FAILURE', 'LOGOUT', 'SAML_POPUP_CLOSED_NO_AUTH']);
 export function canInit(config: ProjectConfig): boolean {
   if (!config.thoughtSpotHost) return false;
   if (clusterReady()) return true;
-  if (config.auth?.tokenSource) return true;
+  if (config.auth?.tokenSource === 'credentials' && config.auth.username && config.auth.secret) return true;
+  if (config.auth?.tokenSource === 'endpoint') return true;
   return SELF_AUTH.has(config.authType || '');
 }
 
@@ -86,10 +112,16 @@ export function ensureSdk(
 
     const named = config.authType || 'None';
 
-    // Whatever can produce a token, in order of directness. This tab minting straight
-    // against the cluster beats a server mint, and either beats nothing.
+    // Whatever can produce a token, most direct first: the credential this tab holds,
+    // otherwise the one the project publishes. The second is what the rendered page uses,
+    // so the canvas showing something the site cannot is not a preview worth having.
     let getAuthToken: (() => Promise<string>) | null = null;
-    if (clusterReady()) getAuthToken = () => clusterToken();
+    if (clusterReady()) {
+      getAuthToken = () => clusterToken();
+    } else if (config.auth?.tokenSource === 'credentials' && config.auth.username && config.auth.secret) {
+      const auth = config.auth as { username: string; secret: string; secretType?: string; validitySeconds?: number };
+      getAuthToken = () => mintFromConfig(host, auth);
+    }
 
     // A project set to None still authenticates when this tab holds a credential —
     // that is what makes the canvas show real content against a locked-down cluster.
@@ -100,8 +132,8 @@ export function ensureSdk(
     // say which of ours is missing. Refuse here instead, naming the fix.
     if (NEEDS_TOKEN.has(resolved) && !getAuthToken) {
       return reject(new Error(
-        `${resolved} needs a token — connect a cluster so this tab can mint one, ` +
-        'or set auth.tokenSource so the server does',
+        `${resolved} needs a token — open init() and connect a cluster so this tab can ` +
+        'mint one, or tick “Let the published site log in with these credentials”',
       ));
     }
 
