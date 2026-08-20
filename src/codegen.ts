@@ -71,7 +71,7 @@ function varName(key: string): string {
     .replace(/^[0-9]/, (d) => `_${d}`);
 }
 
-/** Matches what the sandbox runtime uses, so the snippet warms the same wrapper. */
+/** Matches what the sandbox runtime uses, so the snippet targets the same wrapper. */
 function preRenderIdFor(path: string, index: number): string {
   const key = path.replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'root';
   return `sb_${key}_${index}`;
@@ -161,7 +161,7 @@ export function generateCode(
     lines.push('');
 
     if (spec.preRender) {
-      lines.push(`// Pre-render builds the iframe up front and keeps it warm. It must run`);
+      lines.push(`// Pre-render builds the iframe up front so showing it later is instant. It must run`);
       lines.push(`// before ${container} is on screen — the SDK puts the frame in a wrapper at`);
       lines.push(`// document root, then showPreRender() syncs it onto the container's box.`);
       lines.push(`${varName}.preRender();`);
@@ -265,16 +265,15 @@ export function generateCode(
             const spec = block.embed;
             const cls = CLASS_FOR[spec.type];
             const cfg = embedConfigFor(spec, project, null, true) as Record<string, unknown>;
-            // Pre-render is two components, not a flag: PreRendered<X>Embed warms a
-            // hidden copy, and the ordinary <X>Embed with the same preRenderId is what
-            // shows it — it connects to the warm one instead of building another.
+            // A PreRendered<X>Embed is emitted once, above the page body. Emitting a
+            // visible embed for it too would put content on the page the author never
+            // asked for.
             if (spec.preRender) {
-              const id = (spec.config.preRenderId as string) || preRenderIdFor(path, embedSeen);
-              cfg.preRenderId = id;
               usedPreRender.add(`PreRendered${cls}`);
-            } else {
-              delete cfg.preRenderId;
+              break;
             }
+            // Everything else keeps its preRenderId — that id is how the SDK attaches
+            // this embed to the pre-rendered one.
             const ref = embeds.length === 1 ? 'embedRef' : `embedRef${embedSeen + 1}`;
             embedSeen += 1;
             out.push(`${pad}<${cls}`);
@@ -300,23 +299,20 @@ export function generateCode(
 
     const jsxLines = jsxFor(page.blocks, '      ');
 
-    // One warming component per pre-rendered embed, carrying the same id and config.
+    // One PreRendered<X>Embed per preRender block, above the page body.
     const preRenderJsx: string[] = [];
-    let warmSeen = 0;
+    let preRenderSeen = 0;
     walk(page.blocks, (b) => {
       if (b.type !== 'embed' || !b.embed.preRender) return;
       const cls = CLASS_FOR[b.embed.type];
-      const id = (b.embed.config.preRenderId as string) || preRenderIdFor(path, warmSeen);
-      warmSeen += 1;
-      const cfg = embedConfigFor(b.embed, project, null, true) as Record<string, unknown>;
-      delete cfg.preRenderId;
-      preRenderJsx.push(`      <PreRendered${cls}`);
-      preRenderJsx.push(`        preRenderId=${JSON.stringify(id)}`);
-      if (Object.keys(project.embedDefaults ?? {}).length) preRenderJsx.push('        {...embedDefaults}');
-      for (const [k, v] of Object.entries(cfg)) {
-        preRenderJsx.push(v === true ? `        ${k}` : `        ${k}={${literal(v, 8).trimStart()}}`);
-      }
-      preRenderJsx.push(`      />`);
+      const id = (b.embed.config.preRenderId as string) || preRenderIdFor(path, preRenderSeen);
+      preRenderSeen += 1;
+      // With a liveboardId it pre-fetches that board's data; without one it loads the
+      // generic shell and the visible embed navigates it (both documented use cases).
+      const lb = b.embed.config.liveboardId;
+      preRenderJsx.push(lb
+        ? `      <PreRendered${cls} preRenderId=${JSON.stringify(id)} liveboardId={${JSON.stringify(lb)}} />`
+        : `      <PreRendered${cls} preRenderId=${JSON.stringify(id)} />`);
     });
 
     // Which embed a button drives is the point of `targets`; sending everything to the
@@ -467,8 +463,7 @@ export function generateCode(
       `    <>`,
       ...headerJsx,
       ...(usedPreRender.size
-        ? [`      {/* Warms the iframes off-screen. Mount once, high up — these render`,
-           `          nothing visible; the <${[...usedPreRender][0].replace('PreRendered', '')} /> below connect to them. */}`,
+        ? [`      {/* Pre-renders off-screen. The <${[...usedPreRender][0].replace('PreRendered', '')} /> below with the same preRenderId attaches to it. */}`,
            ...preRenderJsx]
         : []),
       `      <main>`,

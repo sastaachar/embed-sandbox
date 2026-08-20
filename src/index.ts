@@ -17,7 +17,6 @@ import { buildGraph } from './graph';
 import { publicUrls } from './urls';
 import { renderEditor } from './editor';
 import { renderBuilder } from './builder-shell';
-import { renderBuilder as renderLegacyBuilder } from './builder';
 import { renderForkPage } from './fork';
 import { buildOutline } from './outline';
 import { handleMcp } from './mcp';
@@ -451,16 +450,14 @@ export default {
         return html(renderForkPage(projectId, name, pageCount), 200, 'no-store');
       }
 
-      // /build/:id is the React builder; /build-legacy/:id is the vanilla one it
-      // replaced, kept only until the React suite has run against a real cluster.
-      if (segments[0] === 'build' || segments[0] === 'build-legacy') {
+      if (segments[0] === 'build') {
         const projectId = segments[1] || '';
         if (!PROJECT_ID_RE.test(projectId)) {
           return html(renderNotFound('That project id is not valid.'), 404);
         }
         const project = await getProject(env, projectId);
         if (!project) return html(renderNotFound(`No project with id "${projectId}".`), 404);
-        const render = segments[0] === 'build' ? renderBuilder : renderLegacyBuilder;
+        const render = renderBuilder;
         return html(render(projectId, sdkUrl(project.config.sdkVersion)), 200, 'no-store');
       }
 

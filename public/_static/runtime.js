@@ -795,26 +795,26 @@
       waiting.waitingFor = missing;
       throw waiting;
     }
+    // preRender marks a PreRendered*Embed: it renders nothing itself, and exists so an
+    // embed carrying the same preRenderId can attach to an iframe that already loaded.
+    // Everything else is just new Cls(host, cfg).render().
+    var isPreRender = !!spec.preRender && String(path).indexOf('modal:') !== 0;
     var entry = {
       host: host,
       spec: spec,
       embed: null,
-      prerendered: String(path).indexOf('modal:') === 0 ? false : !!spec.preRender,
+      isPreRender: isPreRender,
       rendered: false,
       key: key,
     };
 
-    if (entry.prerendered) {
-      // The wrapper the SDK creates lives at body level; the host element is only
-      // the rect showPreRender() syncs to, so it must always be in the document
-      // with real dimensions — hence the off-screen attic rather than display:none.
+    if (isPreRender) {
+      // Off-screen and never attached to the page: nothing here is meant to be seen.
       atticEl.appendChild(host);
-      // An authored preRenderId is the point of sharing a warm iframe between two
-      // embeds, so it wins. Ours is only the default when none is given.
-      if (!cfg.preRenderId) cfg.preRenderId = 'sb_' + keyOf(path) + '_' + idx;
       entry.embed = new Cls('#' + host.id, cfg);
       wireAll(entry.embed, spec);
       entry.embed.preRender();
+      entry.rendered = true;
     } else {
       entry.embed = new Cls(host, cfg);
       wireAll(entry.embed, spec);
@@ -841,6 +841,8 @@
   };
 
   function missingId(spec) {
+    // A PreRendered*Embed holds an id, not content. It may carry nothing else.
+    if (spec.preRender) return null;
     var key = REQUIRED_ID[spec.type];
     if (!key) return null;
     var cfg = spec.config || {};
@@ -884,14 +886,19 @@
       wrapper.appendChild(note('Embed unavailable', err.message));
       return;
     }
+    if (entry.isPreRender) {
+      // A PreRendered*Embed occupies no space on the page. preRender() already ran.
+      clear(wrapper);
+      wrapper.setAttribute('data-prerender', entry.spec.config.preRenderId || '');
+      return;
+    }
     clear(wrapper);
     wrapper.appendChild(entry.host);
-    if (entry.prerendered) {
-      // render(), not showPreRender(). render() runs connectedToPreRendered(), which
-      // finds the wrapper by preRenderId and attaches to the already-warm iframe;
-      // showPreRender() only un-hides a wrapper and skips that connect entirely, so a
-      // second embed sharing a preRenderId never really joins the one that exists.
-      entry.embed.render();
+    // Exactly what the SDK's own React wrapper does: a preRenderId means
+    // showPreRender() — it connects to the PreRendered iframe, navigates it to this
+    // embed's liveboardId, and positions it over the host. Without one, render().
+    if (entry.spec.config && entry.spec.config.preRenderId) {
+      entry.embed.showPreRender();
       entry.rendered = true;
     } else if (!entry.rendered) {
       entry.rendered = true;
@@ -905,9 +912,14 @@
       if (key.indexOf(prefix) !== 0) return;
       var entry = slots[key];
       try {
-        if (entry.prerendered) {
+        if (entry.isPreRender) {
+          // Left alone on purpose — the wrapper never destroys these either.
+        } else if (entry.spec.config && entry.spec.config.preRenderId) {
+          // Connected to a PreRendered iframe: hide it, never destroy it. The slot is
+          // dropped so a revisit reconnects with a fresh showPreRender().
           entry.embed.hidePreRender();
-          atticEl.appendChild(entry.host);
+          if (entry.host.parentNode) entry.host.parentNode.removeChild(entry.host);
+          delete slots[key];
         } else {
           if (entry.embed.destroy) entry.embed.destroy();
           if (entry.host.parentNode) entry.host.parentNode.removeChild(entry.host);
@@ -924,7 +936,7 @@
     var entry = slots[key];
     if (!entry) return;
     try {
-      if (entry.prerendered) entry.embed.hidePreRender();
+      if (entry.isPreRender) { try { entry.embed.hidePreRender(); } catch (e) { /* never rendered */ } }
       if (entry.embed.destroy) entry.embed.destroy();
     } catch (err) {
       /* an embed that never rendered has nothing to tear down */
@@ -1177,7 +1189,7 @@
         mounts.forEach(function (m) {
           mountEmbed(path, m.spec, m.wrapper, m.idx);
         });
-        warmOthers();
+        preRenderOtherPages();
       },
       function (err) {
         mounts.forEach(function (m) {
@@ -1341,10 +1353,10 @@
     return sdkReady;
   }
 
-  var warmed = false;
-  function warmOthers() {
-    if (warmed) return;
-    warmed = true;
+  var preRenderedOthers = false;
+  function preRenderOtherPages() {
+    if (preRenderedOthers) return;
+    preRenderedOthers = true;
     var idle = window.requestIdleCallback || function (fn) { return setTimeout(fn, 200); };
     idle(function () {
       Object.keys(pages).forEach(function (path) {

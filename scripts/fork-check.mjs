@@ -24,7 +24,7 @@ for (const [path, title] of [['/', 'Home'], ['/sales', 'Sales'], ['/sales/q3', '
     method: 'PUT', headers: authA,
     body: JSON.stringify({ path, page: { title, blocks: [
       { type: 'heading', text: title, level: 1 },
-      { type: 'embed', embed: { type: 'liveboard', liveboardId: 'lb-' + title, preRender: true } },
+      { type: 'embed', embed: { type: 'liveboard', liveboardId: 'lb-' + title, preRender: true, preRenderId: 'fork-' + title } },
     ] } }),
   });
 }

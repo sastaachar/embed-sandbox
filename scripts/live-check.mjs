@@ -28,7 +28,7 @@ const baseConfig = { thoughtSpotHost: BASE, sdkVersion: '1.51.0' };
 await putDoc({
   '/': { title: 'Live', blocks: [
     { type: 'heading', text: 'Alpha', level: 1 },
-    { type: 'embed', embed: { type: 'liveboard', liveboardId: 'lb-keep', preRender: true, height: '300px' } },
+    { type: 'embed', embed: { type: 'liveboard', liveboardId: 'lb-keep', preRender: true, preRenderId: 'live-keep', height: '300px' } },
   ] },
 }, baseConfig);
 
@@ -54,7 +54,7 @@ ok(version.status === 200 && typeof version.body.updatedAt === 'number',
 await putDoc({
   '/': { title: 'Live', blocks: [
     { type: 'heading', text: 'Beta', level: 1 },
-    { type: 'embed', embed: { type: 'liveboard', liveboardId: 'lb-keep', preRender: true, height: '300px' } },
+    { type: 'embed', embed: { type: 'liveboard', liveboardId: 'lb-keep', preRender: true, preRenderId: 'live-keep', height: '300px' } },
   ] },
   '/second': { title: 'Second', blocks: [{ type: 'text', text: 'a new page' }] },
 }, baseConfig);
@@ -81,7 +81,7 @@ await pg.evaluate(() => { window.__notReloaded = true; });
 await putDoc({
   '/': { title: 'Live', blocks: [
     { type: 'heading', text: 'Gamma', level: 1 },
-    { type: 'embed', embed: { type: 'liveboard', liveboardId: 'lb-changed', preRender: true, height: '300px' } },
+    { type: 'embed', embed: { type: 'liveboard', liveboardId: 'lb-changed', preRender: true, preRenderId: 'live-keep', height: '300px' } },
   ] },
 }, baseConfig);
 await pg.waitForFunction(() => document.body.textContent.includes('Gamma'), { timeout: 15000 });

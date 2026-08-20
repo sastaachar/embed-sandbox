@@ -671,6 +671,13 @@ function validateEmbed(v: unknown, field: string): EmbedSpec {
     spec.config[k] = val;
   }
 
+  // preRenderId is required by the SDK's PreRendered*Embed components, and generating
+  // one here would hide the mistake worth catching: two blocks meant to share a
+  // pre-render silently getting different ids.
+  if (spec.preRender && !spec.config.preRenderId) {
+    fail(`${field}.preRender needs ${field}.config.preRenderId — the id another embed uses to connect to it`);
+  }
+
   const handlers = raw.embedEventHandlers !== undefined
     ? validateHandlers(raw.embedEventHandlers, `${field}.embedEventHandlers`)
     : legacyHandlers(raw, field);

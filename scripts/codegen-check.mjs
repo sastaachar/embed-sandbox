@@ -28,7 +28,7 @@ await put('/lb', { title: 'LB', blocks: [
     { label: 'West', action: 'set-filter', column: 'Region', values: ['West'] },
     { label: 'Elsewhere', action: 'nav', to: '/' },
   ]},
-  { type: 'embed', embed: { type: 'liveboard', liveboardId: 'lb-1', fullHeight: true, preRender: true } },
+  { type: 'embed', embed: { type: 'liveboard', liveboardId: 'lb-1', fullHeight: true, preRender: true, preRenderId: 'gen-home' } },
 ]});
 await put('/two', { blocks: [
   { type: 'embed', embed: { type: 'liveboard', liveboardId: 'lb-a' } },

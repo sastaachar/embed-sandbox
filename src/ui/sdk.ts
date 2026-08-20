@@ -29,7 +29,7 @@ const CLASS_FOR: Record<string, string> = {
   conversation: 'ConversationEmbed',
 };
 
-export interface Slot { embed: any; host: HTMLElement; prerendered: boolean }
+export interface Slot { embed: any; host: HTMLElement; prerendered: boolean; connected?: boolean }
 const slots: Record<string, Slot> = {};
 
 /** The same mint the published page does, so the canvas matches what visitors get. */
@@ -196,8 +196,8 @@ export function mount(loc: string, spec: EmbedSpec, host: HTMLElement, lib: AnyL
     if (existing.host !== host || existing.prerendered !== Boolean(spec.preRender)) {
       release(loc);
     } else {
-      if (existing.prerendered) {
-        try { existing.embed.render(); } catch { /* not yet rendered */ }
+      if (existing.connected) {
+        try { existing.embed.showPreRender(); } catch { /* not yet rendered */ }
       }
       return null;
     }
@@ -207,23 +207,20 @@ export function mount(loc: string, spec: EmbedSpec, host: HTMLElement, lib: AnyL
 
   const prerendered = Boolean(spec.preRender);
   const cfg: Record<string, unknown> = { ...embedDefaults, ...spec.config };
-  // An authored preRenderId is deliberate — two embeds sharing one warm iframe is a
-  // thing worth being able to build, and to reproduce bugs with.
-  if (prerendered && !cfg.preRenderId) cfg.preRenderId = `build-${loc.replace(/\./g, '_')}`;
+  // No invented id: preRender requires one, so if it is missing that is the author's
+  // to fix and the schema says so.
   if (!cfg.fullHeight && !cfg.frameParams) {
     cfg.frameParams = { height: spec.height || '340px' };
   }
   try {
     const embed = new Cls(`#${host.id}`, cfg);
-    if (prerendered) {
-      // preRender() warms it; render() is what SHOWS it, because render() connects to
-      // an existing wrapper with this preRenderId. showPreRender() skips that.
-      embed.preRender();
-      embed.render();
-    } else {
-      embed.render();
-    }
-    slots[loc] = { embed, host, prerendered };
+    // The SDK wrapper's own table: PreRendered -> preRender(); an embed with a
+    // preRenderId -> showPreRender(); anything else -> render().
+    const connected = !prerendered && Boolean(cfg.preRenderId);
+    if (prerendered) embed.preRender();
+    else if (connected) embed.showPreRender();
+    else embed.render();
+    slots[loc] = { embed, host, prerendered, connected };
     return null;
   } catch (err) {
     return `could not mount: ${(err as Error).message}`;
@@ -233,10 +230,13 @@ export function mount(loc: string, spec: EmbedSpec, host: HTMLElement, lib: AnyL
 export function release(loc: string) {
   const slot = slots[loc];
   if (!slot) return;
-  if (slot.prerendered) {
+  if (slot.connected) {
+    // Connected to a PreRendered iframe: hide, never destroy — same as the wrapper.
     try { slot.embed.hidePreRender(); } catch { /* never rendered */ }
+  } else if (!slot.prerendered) {
+    try { slot.embed.destroy?.(); } catch { /* older SDKs have no destroy */ }
   }
-  try { slot.embed.destroy?.(); } catch { /* older SDKs have no destroy */ }
+  // A PreRendered slot keeps its iframe alive by design; only our bookkeeping goes.
   delete slots[loc];
 }
 
@@ -252,8 +252,9 @@ export function releaseAll() {
  */
 function syncNow() {
   Object.keys(slots).forEach((k) => {
-    const { embed, prerendered } = slots[k];
-    if (!prerendered) return;
+    const { embed, connected } = slots[k];
+    // Only a CONNECTED embed has a body-level wrapper tracking a host rect.
+    if (!connected) return;
     try {
       if (typeof embed.syncPreRenderStyle === 'function') embed.syncPreRenderStyle();
       else embed.showPreRender();

@@ -36,7 +36,10 @@
     { "key": "fullHeight", "label": "Full height", "kind": "checkbox", "in": "config", "note": "Sizes the iframe to its content, so Height does not apply." },
     { "key": "height", "label": "Height", "kind": "length", "default": "340px", "hideWhen": "fullHeight" },
     { "key": "width", "label": "Width", "kind": "length", "placeholder": "full width" },
-    { "key": "preRender", "label": "Pre-render", "kind": "checkbox" }
+    { "key": "preRender", "label": "Pre-render", "kind": "checkbox",
+      "note": "PreRendered…Embed: renders nothing itself. An embed carrying the same preRenderId attaches to it." },
+    { "key": "preRenderId", "label": "Pre-render id", "kind": "text", "in": "config",
+      "showWhen": "preRender", "placeholder": "required — e.g. shared-liveboard" }
   ],
 
   "embedTypes": [

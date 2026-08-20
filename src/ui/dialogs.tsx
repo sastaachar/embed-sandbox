@@ -12,20 +12,40 @@ const EMBED_TYPES = (spec as any).embedTypes as Array<{ type: EmbedType; label: 
 const AUTH_TYPES = ((spec as any).siteFields as Array<any>)
   .find((f) => f.key === 'authType').options as Array<[string, string]>;
 
-export function TypePicker({ onPick, onClose }: { onPick: (t: EmbedType) => void; onClose: () => void }) {
+export function TypePicker(props: {
+  onPick: (t: EmbedType, preRender: boolean) => void;
+  onClose: () => void;
+}) {
+  // A pre-render block is a PreRendered<X>Embed: it warms an id and shows nothing.
+  // Same type list, different component — so it is a mode here, not a second grid.
+  const [preRender, setPreRender] = useState(false);
   return (
-    <Modal onClose={onClose}>
+    <Modal onClose={props.onClose}>
       <h3>Choose an embed type</h3>
       <p className="dlg-note">Each type asks for different details, so this comes first.</p>
       <div className="type-grid pick">
         {EMBED_TYPES.map((t) => (
-          <button key={t.type} onClick={() => onPick(t.type)}>
-            <span className="nm">{t.label}</span>
-            <span className="bl">{t.blurb}</span>
+          <button key={t.type} id={`type-${t.type}`} onClick={() => props.onPick(t.type, preRender)}>
+            <span className="nm">{preRender ? `Pre-rendered ${t.label}` : t.label}</span>
+            <span className="bl">{preRender ? 'PreRendered…Embed — renders nothing itself' : t.blurb}</span>
           </button>
         ))}
       </div>
-      <div className="dlg-row"><button onClick={onClose}>Cancel</button></div>
+      <label className="checkline">
+        <input
+          id="asPreRender"
+          type="checkbox"
+          checked={preRender}
+          onChange={(e) => setPreRender(e.target.checked)}
+        />
+        Add it as a pre-render (PreRendered…Embed)
+      </label>
+      <p className="hint">
+        {preRender
+          ? 'Renders nothing itself. Add a normal embed carrying the same preRenderId to show it.'
+          : 'Set a Pre-render id on this embed to connect it to a pre-render that already exists.'}
+      </p>
+      <div className="dlg-row"><button onClick={props.onClose}>Cancel</button></div>
     </Modal>
   );
 }

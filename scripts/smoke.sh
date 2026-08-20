@@ -48,6 +48,8 @@ printf '  project=%s\n' "$PID"
 say "2. write nested pages over the API"
 for SPEC in "/:Home:false" "/sales:Sales:true" "/sales/q3:Q3 detail:true"; do
   PATH_=${SPEC%%:*}; REST=${SPEC#*:}; TITLE=${REST%%:*}; PRE=${REST##*:}
+  # preRender requires an id now; one per page keeps them distinct.
+  PRE_ID=$(printf '%s' "$PATH_" | tr -c 'a-z0-9' '-')
   CODE=$(curl -sS -o /dev/null -w '%{http_code}' -X PUT "$BASE/api/projects/$PID/pages" \
     -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
     --data @- <<JSON
@@ -68,6 +70,7 @@ for SPEC in "/:Home:false" "/sales:Sales:true" "/sales/q3:Q3 detail:true"; do
         "liveboardId": "$LB_ID",
         "fullHeight": true,
         "preRender": $PRE,
+        "preRenderId": "smoke$PRE_ID",
         "hiddenActions": ["download"]
       }}
     ]

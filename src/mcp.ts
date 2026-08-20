@@ -69,8 +69,9 @@ embed.type: liveboard | viz | search | searchbar | app | spotter | conversation.
 embed.config IS the SDK constructor config, passed through whole (liveboardId, vizId,
 worksheetId, searchOptions, fullHeight, customizations, visibleActions, locale, ...), so
 SDK params this schema predates still work.
-embed.preRender warms the iframe on first page load so navigating to this page is instant.
-It is off unless set: opt in per embed, since every pre-rendered iframe is a live session.
+embed.preRender marks the SDK's PreRendered*Embed: it renders nothing itself and REQUIRES
+config.preRenderId. A normal embed carrying the same preRenderId attaches to it, which is
+what makes showing it instant. Off unless set — every pre-rendered iframe is a live session.
 embed.height / embed.width size the box on the page, not the SDK.
 embed.name is how a host-event action addresses this embed; without one it is its index.
 embed.embedEventHandlers is a list of { type, id?, actions } where type is an EmbedEvent

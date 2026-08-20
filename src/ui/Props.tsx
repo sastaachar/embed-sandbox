@@ -11,6 +11,7 @@ type FieldSpec = {
   key: string; label: string; kind: string; options?: [string, string][];
   number?: boolean; note?: string; hideWhen?: string; placeholder?: string;
   default?: string; advanced?: boolean; metadataType?: string; max?: number; in?: string;
+  showWhen?: string;
 };
 
 const EMBED_TYPES = (spec as any).embedTypes as Array<{
@@ -191,6 +192,8 @@ function EmbedFields(p: PropsPanelProps & { spec: EmbedSpec }) {
         if (f.hideWhen && s.config[f.hideWhen]) {
           return <p className="hint" key={f.key}>{noteFor(f.hideWhen)}</p>;
         }
+        // Pre-render needs an id, so the field only exists once pre-render is on.
+        if (f.showWhen && !s[f.showWhen as keyof typeof s]) return null;
         return <GenericField key={f.key} field={f} target={targetFor(f)} {...p} />;
       })}
 

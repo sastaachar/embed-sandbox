@@ -19,16 +19,24 @@ async function api(path, opts = {}) {
   return { status: res.status, body: await res.json().catch(() => null) };
 }
 
-function page(title, pre) {
-  return {
-    title,
-    blocks: [
-      { type: 'heading', text: title, level: 1 },
-      { type: 'text', text: 'Rendered from JSON.' },
-      { type: 'buttons', items: [{ label: 'Reload', action: 'reload', variant: 'primary' }] },
-      { type: 'embed', embed: { type: 'liveboard', liveboardId: LB, fullHeight: true, preRender: pre } },
-    ],
-  };
+/**
+ * `pre` adds a WARMING counterpart, which is what preRender means: a block that renders
+ * nothing and holds a preRenderId hot. The visible embed is an ordinary one that
+ * connects to it by carrying the same id.
+ */
+function page(title, pre, id) {
+  const blocks = [
+    { type: 'heading', text: title, level: 1 },
+    { type: 'text', text: 'Rendered from JSON.' },
+    { type: 'buttons', items: [{ label: 'Reload', action: 'reload', variant: 'primary' }] },
+  ];
+  if (pre) {
+    blocks.push({ type: 'embed', embed: { type: 'liveboard', preRender: true,
+      config: { liveboardId: LB, preRenderId: id } } });
+  }
+  blocks.push({ type: 'embed', embed: { type: 'liveboard', fullHeight: true,
+    config: { liveboardId: LB, ...(pre ? { preRenderId: id } : {}) } } });
+  return { title, blocks };
 }
 
 const created = await api('/api/projects', {
@@ -54,11 +62,16 @@ const pid = created.body.projectId;
 const token = created.body.editToken;
 console.log('project', pid);
 
-for (const [p, t, pre] of [['/', 'Home', true], ['/sales', 'Sales', true], ['/sales/q3', 'Q3 detail', true]]) {
+// Each page warms its own id, so navigation exercises several wrappers.
+for (const [p, t, pre, id] of [
+  ['/', 'Home', true, 'warm-home'],
+  ['/sales', 'Sales', true, 'warm-sales'],
+  ['/sales/q3', 'Q3 detail', true, 'warm-q3'],
+]) {
   await api(`/api/projects/${pid}/pages`, {
     method: 'PUT',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-    body: JSON.stringify({ path: p, page: page(t, pre) }),
+    body: JSON.stringify({ path: p, page: page(t, pre, id) }),
   });
 }
 

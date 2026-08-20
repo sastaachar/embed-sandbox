@@ -18,12 +18,25 @@ import spec from './spec.json';
 const PALETTE = (spec as any).palette as Array<{ label: string; chooseType?: boolean; block: Block }>;
 const REMEMBER_KEY = `sb.tok.${PID}`;
 
+/** prerender-1, -2, … skipping any the document already uses. */
+function nextPreRenderId(doc: Doc): string {
+  const taken = new Set<string>();
+  const walk = (blocks: Block[] | undefined) => {
+    for (const b of blocks ?? []) {
+      if (b.type === 'embed' && b.embed?.config?.preRenderId) taken.add(String(b.embed.config.preRenderId));
+      if (b.type === 'row') for (const col of b.columns ?? []) walk(col.blocks);
+    }
+  };
+  for (const page of Object.values(doc.pages)) walk(page.blocks);
+  for (let n = 1; ; n += 1) if (!taken.has(`prerender-${n}`)) return `prerender-${n}`;
+}
+
 /** Same cadence the published pages poll at. */
 const LIVE_POLL_MS = 4000;
 
 
 type Dialog =
-  | { kind: 'type'; onPick: (t: EmbedType) => void }
+  | { kind: 'type'; onPick: (t: EmbedType, preRender: boolean) => void }
   | { kind: 'metadata'; metadataType: string; onPick: (id: string) => void }
   | { kind: 'connect' }
   | { kind: 'buildAi' }
@@ -203,8 +216,15 @@ export function App() {
     if (entry.chooseType) {
       setDialog({
         kind: 'type',
-        onPick: (t) => {
+        onPick: (t, preRender) => {
           setEmbedType(block, t);
+          if (preRender) {
+            block.embed!.preRender = true;
+            // An id is required, so give it one that is valid immediately and obvious
+            // to change — an unsaveable block would be a worse first impression.
+            block.embed!.config.preRenderId = nextPreRenderId(doc.current!);
+            if (!block.embed!.name) block.embed!.name = 'prerender';
+          }
           setDialog(null);
           touched();
           render();
