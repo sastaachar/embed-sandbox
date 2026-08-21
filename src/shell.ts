@@ -2,7 +2,7 @@ import type { Page, Project } from './db';
 import type { Theme } from './schema';
 import { resolveTheme } from './theme';
 
-export const RUNTIME_VERSION = '15';
+export const RUNTIME_VERSION = '16';
 
 export const SDK_CDN_ORIGIN = 'https://cdn.jsdelivr.net';
 

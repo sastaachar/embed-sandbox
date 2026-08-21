@@ -1495,10 +1495,12 @@
     return out;
 
     function plain(chunk) {
+      // Keywords FIRST: "class" is a keyword, and running it after the tag wrapping
+      // rewrites the injected <i class="..."> markup itself into garbage.
       return chunk
+        .replace(CODE_KEYWORDS, '<i class="c-kw">$&</i>')
         .replace(/&lt;(\/?)([A-Z][A-Za-z0-9]*)/g, '&lt;$1<i class="c-cmp">$2</i>')
-        .replace(/&lt;(\/?)([a-z][a-z0-9]*)/g, '&lt;$1<i class="c-tag">$2</i>')
-        .replace(CODE_KEYWORDS, '<i class="c-kw">$&</i>');
+        .replace(/&lt;(\/?)([a-z][a-z0-9]*)/g, '&lt;$1<i class="c-tag">$2</i>');
     }
   }
 
