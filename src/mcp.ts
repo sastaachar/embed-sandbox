@@ -205,10 +205,13 @@ customizations, locale, anything the SDK takes now or later.
 
 preRender: true marks the SDK's PreRendered<X>Embed: it loads in the background,
 renders nothing visible, and REQUIRES config.preRenderId. A normal embed carrying the
-same preRenderId attaches to that iframe when shown — instant paint. With liveboardId
-on the preRender block it pre-fetches that board; without, it loads the generic shell
-and the visible embed navigates it. One preRenderId can be shared by embeds on
-different pages (that is the point, and also how filter-state bugs are reproduced).
+same preRenderId connects to that iframe on plain render() — the SDK does the
+connecting; nothing extra is ever called. In React that is <PreRendered<X>Embed> plus
+an ordinary <<X>Embed>; in JS it is preRender() on the background instance and render()
+on the visible one. With liveboardId on the preRender block it pre-fetches that board;
+without, it loads the generic shell and the visible embed navigates it. One preRenderId
+can be shared by embeds on different pages (that is the point, and also how
+filter-state bugs are reproduced).
 
 ## Actions — one vocabulary for buttons and events
 

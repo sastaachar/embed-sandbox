@@ -894,15 +894,15 @@
     }
     clear(wrapper);
     wrapper.appendChild(entry.host);
-    // Exactly what the SDK's own React wrapper does: a preRenderId means
-    // showPreRender() — it connects to the PreRendered iframe, navigates it to this
-    // embed's liveboardId, and positions it over the host. Without one, render().
-    if (entry.spec.config && entry.spec.config.preRenderId) {
-      entry.embed.showPreRender();
-      entry.rendered = true;
-    } else if (!entry.rendered) {
+    // render() is the whole story: with a preRenderId it connects to the background
+    // copy and shows it, without one it builds its own iframe. On a REVISIT to a
+    // connected embed the wrapper is hidden, not gone, so showPreRender() un-hides it —
+    // that is the one place the call belongs.
+    if (!entry.rendered) {
       entry.rendered = true;
       entry.embed.render();
+    } else if (entry.spec.config && entry.spec.config.preRenderId) {
+      entry.embed.showPreRender();
     }
   }
 

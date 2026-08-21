@@ -214,11 +214,10 @@ export function mount(loc: string, spec: EmbedSpec, host: HTMLElement, lib: AnyL
   }
   try {
     const embed = new Cls(`#${host.id}`, cfg);
-    // The SDK wrapper's own table: PreRendered -> preRender(); an embed with a
-    // preRenderId -> showPreRender(); anything else -> render().
+    // preRender() for the background copy; render() for everything else — with a
+    // preRenderId it connects and shows under the hood.
     const connected = !prerendered && Boolean(cfg.preRenderId);
     if (prerendered) embed.preRender();
-    else if (connected) embed.showPreRender();
     else embed.render();
     slots[loc] = { embed, host, prerendered, connected };
     return null;
