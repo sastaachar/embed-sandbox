@@ -21,6 +21,6 @@
     "src/**/*.ts"
   ],
   "exclude": [
-    "src/ui"
+    "src/builder/ui"
   ]
 }

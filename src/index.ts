@@ -11,24 +11,25 @@ import {
   updateProjectConfig,
   verifyToken,
   type Env,
-} from './db';
-import { type Flavor, generateCode } from './codegen';
-import { buildGraph } from './graph';
-import { publicUrls } from './urls';
-import { renderEditor } from './editor';
-import { renderBuilder } from './builder-shell';
-import { renderForkPage } from './fork';
-import { buildOutline } from './outline';
-import { handleMcp } from './mcp';
+} from './common/db';
+import { type Flavor, generateCode } from './common/codegen';
+import { buildGraph } from './common/graph';
+import { publicUrls } from './common/urls';
+import { renderEditor } from './builder/editor';
+import { renderBuilder } from './builder/shell';
+import { renderForkPage } from './builder/fork';
+import { buildOutline } from './common/outline';
+import { handleMcp } from './common/mcp';
 import {
   ValidationError,
   normalizePath,
   validatePageConfig,
   validateProjectConfig,
   type PageConfig,
-} from './schema';
-import { RUNTIME_VERSION, buildManifest, renderNotFound, renderShell, sdkUrl } from './shell';
-import { contrastOf, effectiveProject, resolveTheme, tsVarsFor } from './theme';
+} from './common/schema';
+import { RUNTIME_VERSION, buildManifest, renderNotFound, renderShell } from './live/shell';
+import { sdkUrl } from './common/sdkUrl';
+import { contrastOf, effectiveProject, resolveTheme, tsVarsFor } from './common/theme';
 
 const MAX_PAGES_PER_PROJECT = 200;
 const PROJECT_ID_RE = /^[a-z0-9]{8,24}$/;
@@ -89,7 +90,7 @@ async function serveShell(request: Request, env: Env, projectId: string): Promis
     return html(renderNotFound(`No project with id "${projectId}".`), 404);
   }
 
-  const runtimeSrc = `/_static/runtime.js?v=${RUNTIME_VERSION}`;
+  const runtimeSrc = `/_static/live/runtime.js?v=${RUNTIME_VERSION}`;
   const cache = caches.default;
   // One shell serves every path in a project — the runtime routes client-side —
   // so the cache key is the project version, not the request URL.

@@ -1,7 +1,7 @@
 import type { EmbedSpec, ProjectConfig } from './types';
 import { clusterFingerprint, clusterReady, clusterToken } from './cluster';
 import { PID } from './api';
-import { effectiveProject } from '../theme';
+import { effectiveProject } from '../../common/theme';
 
 /*
  * A pre-rendered embed lives in the SDK's body-level wrapper, so re-rendering or
@@ -214,10 +214,14 @@ export function mount(loc: string, spec: EmbedSpec, host: HTMLElement, lib: AnyL
   }
   try {
     const embed = new Cls(`#${host.id}`, cfg);
-    // preRender() for the background copy; render() for everything else — with a
-    // preRenderId it connects and shows under the hood.
+    // preRender() for the background copy; a connecting embed (has a preRenderId) is
+    // shown with showPreRender(), which attaches to the shared pre-rendered iframe by
+    // id — render() does NOT call showPreRender() under the hood, so it would reveal
+    // nothing. A plain embed builds its own iframe with render(). Mirrors the SDK guard:
+    //   if (preRenderId) { tsEmbed.showPreRender(); return; }  else tsEmbed.render();
     const connected = !prerendered && Boolean(cfg.preRenderId);
     if (prerendered) embed.preRender();
+    else if (connected) embed.showPreRender();
     else embed.render();
     slots[loc] = { embed, host, prerendered, connected };
     return null;

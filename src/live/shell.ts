@@ -1,15 +1,9 @@
-import type { Page, Project } from './db';
-import type { Theme } from './schema';
-import { resolveTheme } from './theme';
+import type { Page, Project } from '../common/db';
+import type { Theme } from '../common/schema';
+import { resolveTheme } from '../common/theme';
+import { SDK_CDN_ORIGIN, sdkUrl } from '../common/sdkUrl';
 
-export const RUNTIME_VERSION = '17';
-
-export const SDK_CDN_ORIGIN = 'https://cdn.jsdelivr.net';
-
-export function sdkUrl(version: string | undefined): string {
-  const v = version && version.length > 0 ? version : 'latest';
-  return `${SDK_CDN_ORIGIN}/npm/@thoughtspot/visual-embed-sdk@${v}/dist/tsembed.js`;
-}
+export const RUNTIME_VERSION = '23';
 
 const THEME_VAR: Record<keyof Theme, string> = {
   colorPrimary: '--sb-primary',

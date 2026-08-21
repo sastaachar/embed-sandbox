@@ -676,6 +676,38 @@
     return EXPIRY_SIGNAL.test(probe);
   }
 
+  /*
+   * The SDK fires EmbedEvent.Error for a lot of non-fatal things — a validation warning,
+   * a failed viz API call, a transient network blip the SDK retries, a custom-action
+   * mismatch. Popping a modal over the whole page for those is noise. We only interrupt
+   * for "sev 1": the embed genuinely cannot show — auth/login failed, init failed, the
+   * object id is missing/not found, or the cluster refuses to be framed (CSP). Everything
+   * else is logged and left in NS.get('embedError'), never modal-ed.
+   *
+   * Payload shape varies by SDK version:
+   *   old: { type:'Error', data:{ errorType, error:{ message, code } } }
+   *   new: { errorType, message, code }
+   */
+  var FATAL_ERROR = /LOGIN_FAILED|INIT_ERROR|LIVEBOARD_ID_MISSING|WORKSHEET_ID_NOT_FOUND|SDK_NOT_INITIALIZED|INVALID_TOKEN|CSP|FRAME_HOST|frame-ancestors/i;
+
+  function errorProbe(payload) {
+    if (!payload) return '';
+    var d = payload.data || {};
+    var inner = d.error || payload.error || {};
+    return [
+      payload.errorType, payload.code, payload.message,
+      d.errorType, d.code, d.message,
+      inner.code, inner.message, inner.error,
+      typeof payload === 'string' ? payload : null,
+    ].filter(function (v) { return typeof v === 'string'; }).join(' ');
+  }
+
+  function isFatalError(payload) {
+    var probe = errorProbe(payload) || display(payload);
+    // The cluster refusing to be embedded is always fatal — nothing can render.
+    return CORS_HINT.test(probe) || FATAL_ERROR.test(probe);
+  }
+
   function wireErrorSurface(embed) {
     var events = sdk.EmbedEvent || {};
     // Subscribed even when error modals are off, so expiry is still visible in the log.
@@ -694,6 +726,16 @@
         store.set('embedError', payload);
         if (isExpirySignal(payload)) {
           console.info('[' + NS + '] ignoring an expiry signal on the Error channel', payload);
+          return;
+        }
+        // Only "sev 1" errors interrupt with a modal; the rest are logged and parked in
+        // the store. A site can still read every error via NS.get('embedError').
+        if (!isFatalError(payload)) {
+          console.warn(
+            '[' + NS + '] embed reported a non-fatal error — modal suppressed. ' +
+              'See ' + NS + ".get('embedError').",
+            payload,
+          );
           return;
         }
         // A site-defined "embed-error" modal wins, so this is overridable.
@@ -783,10 +825,6 @@
     }
     var host = el('div', 'sb-embed-host');
     host.id = 'sb-slot-' + keyOf(path) + '_' + idx;
-    // The host is the rect showPreRender() syncs to, so it carries the height even
-    // while parked in the attic — a host sized differently from the frame is the 0×0
-    // class of bug all over again.
-    if (spec.height && !(spec.config || {}).fullHeight) host.style.height = spec.height;
     if (spec.width) host.style.maxWidth = spec.width;
     var missing = [];
     var cfg = resolveTokens(buildConfig(spec), missing);
@@ -799,6 +837,19 @@
     // embed carrying the same preRenderId can attach to an iframe that already loaded.
     // Everything else is just new Cls(host, cfg).render().
     var isPreRender = !!spec.preRender && String(path).indexOf('modal:') !== 0;
+    // The host is the rect showPreRender() syncs to. A *connecting* embed (has a
+    // preRenderId but is not the PreRendered instance itself) never mounts an iframe
+    // inside this host — the SDK floats the body-level pre-render wrapper over it — so
+    // the host has nothing to give it height and collapses to 0, and showPreRender()
+    // then syncs the wrapper to a 0-height rect: the embed loads but never shows. So a
+    // connecting host must be sized to the frame explicitly. A plain embed fills its own
+    // host, so spec.height alone is enough there.
+    if (!cfg.fullHeight) {
+      var frameH = cfg.frameParams && cfg.frameParams.height;
+      var connecting = !isPreRender && cfg.preRenderId;
+      var h = spec.height || (connecting ? frameH : null);
+      if (h !== undefined && h !== null) host.style.height = typeof h === 'number' ? h + 'px' : h;
+    }
     var entry = {
       host: host,
       spec: spec,
@@ -894,15 +945,22 @@
     }
     clear(wrapper);
     wrapper.appendChild(entry.host);
-    // render() is the whole story: with a preRenderId it connects to the background
-    // copy and shows it, without one it builds its own iframe. On a REVISIT to a
-    // connected embed the wrapper is hidden, not gone, so showPreRender() un-hides it —
-    // that is the one place the call belongs.
-    if (!entry.rendered) {
+    // A connecting embed (carries a preRenderId but is not the background PreRendered
+    // instance) is revealed with showPreRender(): it attaches to the shared pre-rendered
+    // iframe by id and shows it, syncing the wrapper to this host's rect. render() does
+    // NOT call showPreRender() under the hood — ideally it would, but it doesn't — so
+    // render()ing a connecting embed reveals nothing and the background iframe stays
+    // hidden. This mirrors the SDK's own guard:
+    //   if (preRenderId) { tsEmbed.showPreRender(); return; }
+    //   tsEmbed.render();
+    // A plain embed with no preRenderId builds its own iframe with render(). Both calls
+    // are safe to repeat on a revisit (showPreRender re-shows after hidePreRender).
+    if (entry.spec.config && entry.spec.config.preRenderId) {
+      entry.rendered = true;
+      entry.embed.showPreRender();
+    } else if (!entry.rendered) {
       entry.rendered = true;
       entry.embed.render();
-    } else if (entry.spec.config && entry.spec.config.preRenderId) {
-      entry.embed.showPreRender();
     }
   }
 
@@ -1189,7 +1247,6 @@
         mounts.forEach(function (m) {
           mountEmbed(path, m.spec, m.wrapper, m.idx);
         });
-        preRenderOtherPages();
       },
       function (err) {
         mounts.forEach(function (m) {
@@ -1353,26 +1410,12 @@
     return sdkReady;
   }
 
-  var preRenderedOthers = false;
-  function preRenderOtherPages() {
-    if (preRenderedOthers) return;
-    preRenderedOthers = true;
-    var idle = window.requestIdleCallback || function (fn) { return setTimeout(fn, 200); };
-    idle(function () {
-      Object.keys(pages).forEach(function (path) {
-        if (path === active) return;
-        embedSpecsOf(pages[path]).forEach(function (s) {
-          if (!s.spec.preRender) return;
-          if (slots[slotKey(path, s.idx)]) return;
-          try {
-            slotFor(path, s.spec, s.idx);
-          } catch (err) {
-            console.warn('[sandbox] pre-render skipped for ' + path, err);
-          }
-        });
-      });
-    });
-  }
+  // A preRender:true block is pre-rendered when ITS OWN page renders — the same thing
+  // the generated code does, and nothing more. We deliberately do NOT eagerly warm other
+  // pages' pre-render blocks: two instances trying to own one preRenderId is what spawns
+  // duplicate #tsEmbed-pre-render-wrapper-<id> nodes. Landing on a page that declares the
+  // PreRendered component warms it; a page that shares the id shows it with
+  // showPreRender(), which the SDK connects to the one existing wrapper.
 
   console.info(
     '[' + NS + '] ready — ' + NS + ".set('k', v) / " + NS + ".get('k') / " + NS + '.all() · ' +

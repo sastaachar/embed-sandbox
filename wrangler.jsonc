@@ -5,7 +5,7 @@
   "compatibility_date": "2026-08-01",
   "observability": { "enabled": true },
 
-  // Static files only — /_static/runtime.js. Assets are matched before the
+  // Static files only — /_static/live/runtime.js. Assets are matched before the
   // Worker runs, so every other path (/, /api, /mcp, /p/...) falls through.
   "assets": { "directory": "./public" },
 

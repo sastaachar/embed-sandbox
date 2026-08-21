@@ -24,13 +24,27 @@ ThoughtSpot SDK from the jsDelivr CDN at the version the project pins and mounts
 the embeds. Nested paths are routed client-side, so pre-rendered iframes survive
 navigation.
 
+The code is split three ways along that seam — **build the JSON**, **run the JSON**,
+and the **shared** pieces both sides need:
+
 ```
-src/index.ts     routing, REST API, edge-cached shell
-src/mcp.ts       MCP server (JSON-RPC over HTTP, bearer auth)
-src/schema.ts    page/site schema + validation
-src/shell.ts     shell HTML, theme tokens, critical CSS
-src/db.ts        D1 queries
-public/_static/runtime.js   the renderer (no framework)
+src/index.ts              Worker entry & router — wires the three together
+src/common/               shared by builder, live and the backend
+  schema.ts               page/site schema + validation
+  theme.ts                theme tokens → CSS vars + --ts-var-* customizations
+  urls.ts  sdkUrl.ts       public URL builder · SDK version → CDN URL
+  codegen.ts graph.ts outline.ts   derive React/JS code, a graph, an outline from the JSON
+  db.ts  tsrest.ts         D1 queries · ThoughtSpot REST (token mint, metadata)
+  mcp.ts                  MCP server (JSON-RPC over HTTP, bearer auth) — the agent backend
+src/builder/              builds the JSON
+  shell.ts                serves the builder page (loads the React bundle)
+  editor.ts fork.ts       the /edit JSON editor · the /fork landing page
+  ui/                     the React builder app (bundled by `npm run build:ui`)
+src/live/
+  shell.ts                the published-site shell HTML, theme tokens, critical CSS
+public/_static/
+  live/runtime.js         the renderer that runs a site from its JSON (no framework)
+  builder/builder.js|css  the bundled React builder
 ```
 
 ### The whole app is one JSON document
@@ -134,31 +148,31 @@ few seconds — see **Live updates**.
 ## The visual builder
 
 `/build/<projectId>` is a **React app** (React 19, bundled by esbuild to
-`public/_static/builder.js`). The public site is deliberately *not*: it stays
+`public/_static/builder/builder.js`). The public site is deliberately *not*: it stays
 framework-free at 14 KB so a shared demo still paints in ~50 ms. A design-time tool
 and a published page have opposite constraints, so they get opposite answers.
 
 ```
-npm run build:ui     # bundle src/ui -> public/_static/builder.js + .css
+npm run build:ui     # bundle src/builder/ui -> public/_static/builder/builder.js + .css
 npm run dev:ui       # same, watching
-npm run typecheck    # worker tsconfig + src/ui tsconfig
+npm run typecheck    # worker tsconfig + src/builder/ui tsconfig
 ```
 
 ```
-src/ui/spec.json     the single source of truth for the editable surface
-src/ui/App.tsx       gate, toolbar, state, dialog orchestration
-src/ui/Canvas.tsx    sheet, cards, rows/columns, SortableJS, interact.js resizing
-src/ui/Props.tsx     the properties panel — rendered FROM spec.json, not hardcoded
-src/ui/dialogs.tsx   embed-type picker, metadata picker, connect, prompt, confirm
-src/ui/sdk.ts        SDK init + pre-render lifecycle for the canvas
-src/ui/cluster.ts    browser-side cluster login and metadata search
-src/ui/api.ts        the document API client
-src/builder-shell.ts the Worker only serves the shell — no UI lives in the Worker
+src/builder/ui/spec.json     the single source of truth for the editable surface
+src/builder/ui/App.tsx       gate, toolbar, state, dialog orchestration
+src/builder/ui/Canvas.tsx    sheet, cards, rows/columns, SortableJS, interact.js resizing
+src/builder/ui/Props.tsx     the properties panel — rendered FROM spec.json, not hardcoded
+src/builder/ui/dialogs.tsx   embed-type picker, metadata picker, connect, prompt, confirm
+src/builder/ui/sdk.ts        SDK init + pre-render lifecycle for the canvas
+src/builder/ui/cluster.ts    browser-side cluster login and metadata search
+src/builder/ui/api.ts        the document API client
+src/builder/shell.ts         the Worker only serves the shell — no UI lives in the Worker
 ```
 
 ### One JSON file controls the editable surface
 
-`src/ui/spec.json` defines the palette, the embed types, and every field the
+`src/builder/ui/spec.json` defines the palette, the embed types, and every field the
 properties panel shows — per type, with its kind (`text`, `select`, `checkbox`,
 `length`, `metadata`, `json`). Nothing about those panels is hardcoded in the
 components: adding an SDK parameter is a JSON edit, and it shows up in the UI

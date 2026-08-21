@@ -1,5 +1,5 @@
 import type { Block, ButtonSpec, EmbedSpec, PageConfig, ProjectConfig } from './schema';
-import { sdkUrl } from './shell';
+import { sdkUrl } from './sdkUrl';
 
 export type Flavor = 'cdn' | 'esm' | 'react';
 
@@ -220,6 +220,10 @@ export function generateCode(
       // The background instance. It renders nothing — its only job is loading the
       // iframe up front so the embed that shares its preRenderId paints instantly.
       lines.push(`${varName}.preRender();`);
+    } else if (cfg.preRenderId) {
+      // A connecting embed: showPreRender() attaches to the shared pre-rendered iframe
+      // by id and reveals it. render() does not do this under the hood.
+      lines.push(`${varName}.showPreRender();`);
     } else {
       lines.push(`${varName}.render();`);
     }

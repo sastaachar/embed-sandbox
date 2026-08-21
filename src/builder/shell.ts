@@ -1,5 +1,5 @@
 /**
- * The builder is a React app bundled to /_static/builder.js by `npm run build:ui`.
+ * The builder is a React app bundled to /_static/builder/builder.js by `npm run build:ui`.
  * This file only serves its shell: nothing about the UI lives here, so the page can
  * never drift from the components the way an inline template literal did.
  *
@@ -19,7 +19,7 @@ export function renderBuilder(projectId: string, sdkUrl: string): string {
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Build · ${projectId}</title>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-<link rel="stylesheet" href="/_static/builder.css?v=${BUILDER_VERSION}">
+<link rel="stylesheet" href="/_static/builder/builder.css?v=${BUILDER_VERSION}">
 <script>window.__PID = ${id};</script>
 </head>
 <body>
@@ -29,7 +29,7 @@ export function renderBuilder(projectId: string, sdkUrl: string): string {
 <script src="${sdkUrl}"></script>
 <script src="${SORTABLE}"></script>
 <script src="${INTERACT}"></script>
-<script src="/_static/builder.js?v=${BUILDER_VERSION}"></script>
+<script src="/_static/builder/builder.js?v=${BUILDER_VERSION}"></script>
 </body>
 </html>`;
 }
