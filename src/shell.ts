@@ -2,7 +2,7 @@ import type { Page, Project } from './db';
 import type { Theme } from './schema';
 import { resolveTheme } from './theme';
 
-export const RUNTIME_VERSION = '16';
+export const RUNTIME_VERSION = '17';
 
 export const SDK_CDN_ORIGIN = 'https://cdn.jsdelivr.net';
 
@@ -126,13 +126,7 @@ border:1px solid var(--sb-border);background:var(--sb-surface);color:var(--sb-te
 color:var(--sb-primary);text-decoration:none}
 .sb-code-fork:hover{background:var(--sb-primary);color:var(--sb-primary-text);text-decoration:none}
 .sb-code-pre{flex:1;margin:0;padding:14px 16px;overflow:auto;font:12.5px/1.6 ui-monospace,Menlo,monospace;
-white-space:pre;background:#0f1220;color:#dbe2f4}
-.sb-code-pre .c-kw{color:#c792ea;font-style:normal}
-.sb-code-pre .c-str{color:#a5e075;font-style:normal}
-.sb-code-pre .c-num{color:#f2b96b;font-style:normal}
-.sb-code-pre .c-com{color:#5d6a92;font-style:italic}
-.sb-code-pre .c-cmp{color:#7fd1e8;font-style:normal}
-.sb-code-pre .c-tag{color:#e88fb1;font-style:normal}
+white-space:pre;background:#2d2d2d;color:#ccc}
 .sb-modal-backdrop{position:fixed;inset:0;z-index:100;background:rgba(0,0,0,.45);
 display:flex;align-items:flex-start;justify-content:center;padding:5vh 16px;overflow-y:auto}
 .sb-modal-backdrop[hidden]{display:none}

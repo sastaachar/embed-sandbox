@@ -1474,34 +1474,32 @@
   // generator the builder uses — plus a fork link, so a viewer can take a demo
   // and make it theirs. config.showCode: false removes all of it.
 
-  var CODE_KEYWORDS = /\b(import|export|from|const|let|var|function|return|new|async|await|if|else|for|of|in|typeof|class|extends|true|false|null|undefined|default)\b/g;
+  // Prism does the colouring — loaded from jsDelivr only when the overlay first
+  // opens, so a page that never shows its code never pays for it.
+  var PRISM_BASE = 'https://cdn.jsdelivr.net/npm/prismjs@1.29.0';
+  var prismReady = null;
 
-  function highlight(src) {
-    var esc = String(src)
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    var out = '';
-    var rest = esc;
-    // one pass, longest-match-first: comments, strings, then everything else
-    var token = /(\/\/[^\n]*|\/\*[\s\S]*?\*\/)|("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)|(\b\d[\d.]*\b)/g;
-    var last = 0, m;
-    while ((m = token.exec(esc)) !== null) {
-      out += plain(esc.slice(last, m.index));
-      if (m[1]) out += '<i class="c-com">' + m[1] + '</i>';
-      else if (m[2]) out += '<i class="c-str">' + m[2] + '</i>';
-      else out += '<i class="c-num">' + m[3] + '</i>';
-      last = m.index + m[0].length;
-    }
-    out += plain(esc.slice(last));
-    return out;
-
-    function plain(chunk) {
-      // Keywords FIRST: "class" is a keyword, and running it after the tag wrapping
-      // rewrites the injected <i class="..."> markup itself into garbage.
-      return chunk
-        .replace(CODE_KEYWORDS, '<i class="c-kw">$&</i>')
-        .replace(/&lt;(\/?)([A-Z][A-Za-z0-9]*)/g, '&lt;$1<i class="c-cmp">$2</i>')
-        .replace(/&lt;(\/?)([a-z][a-z0-9]*)/g, '&lt;$1<i class="c-tag">$2</i>');
-    }
+  function ensurePrism() {
+    if (prismReady) return prismReady;
+    var css = document.createElement('link');
+    css.rel = 'stylesheet';
+    css.href = PRISM_BASE + '/themes/prism-tomorrow.min.css';
+    document.head.appendChild(css);
+    var parts = ['/components/prism-core.min.js', '/components/prism-markup.min.js',
+      '/components/prism-clike.min.js', '/components/prism-javascript.min.js',
+      '/components/prism-jsx.min.js'];
+    prismReady = parts.reduce(function (chain, part) {
+      return chain.then(function () {
+        return new Promise(function (resolve, reject) {
+          var s = document.createElement('script');
+          s.src = PRISM_BASE + part;
+          s.onload = resolve;
+          s.onerror = reject;
+          document.head.appendChild(s);
+        });
+      });
+    }, Promise.resolve());
+    return prismReady;
   }
 
   function codeOverlay() {
@@ -1536,7 +1534,15 @@
       pre.textContent = 'generating…';
       fetch('/api/projects/' + M.projectId + '/code?path=' + encodeURIComponent(path) + '&flavor=' + flavor)
         .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('could not generate')); })
-        .then(function (body) { raw = body.code || ''; pre.innerHTML = highlight(raw); })
+        .then(function (body) {
+          raw = body.code || '';
+          pre.textContent = raw;
+          // Colour is an upgrade, never a requirement: if the CDN is unreachable the
+          // plain text stands.
+          ensurePrism().then(function () {
+            pre.innerHTML = window.Prism.highlight(raw, window.Prism.languages.jsx, 'jsx');
+          }, function () { /* offline: plain text already shown */ });
+        })
         .catch(function (err) { pre.textContent = String(err.message || err); });
     }
     btnReact.onclick = function () { flavor = 'react'; load(); };
