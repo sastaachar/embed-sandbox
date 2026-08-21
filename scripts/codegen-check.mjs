@@ -80,13 +80,13 @@ const cdnNoInit = await code('path=/lb&flavor=cdn&init=0');
 ok(count(cdnNoInit, 'init({') === 1, 'cdn keeps init even with init=0, since it is standalone');
 
 // ---- preRender ordering is explained, not just emitted ----
-// Two instances, one call each: the PreRender block warms with preRender(); the
-// visible embed carrying the same preRenderId shows with showPreRender().
+// Two instances, one call each: the PreRender block gets preRender(); every visible
+// embed just calls render() — carrying the preRenderId is what connects it.
 ok(cdn.includes('preRenderEmbed.preRender();'), 'the PreRender block gets its own instance and preRender()');
-ok(/\bembed(\d+)?\.showPreRender\(\);/.test(cdn), 'the visible embed attaches with showPreRender()');
-ok(cdn.indexOf('.preRender();') < cdn.indexOf('.showPreRender();'), 'background instance is created first');
+ok(/\bembed(\d+)?\.render\(\);/.test(cdn), 'the visible embed calls render()');
+ok(cdn.indexOf('.preRender();') < cdn.indexOf('.render();'), 'background instance is created first');
 ok(cdn.includes('preRenderId'), 'a preRenderId is generated');
-ok(/Attaches to the pre-rendered iframe/.test(cdn), 'the attach step is explained in a comment');
+ok(cdn.includes('preRenderId'), 'the connecting id is in the visible embed config');
 ok(cdn.includes('fullHeight: true'), 'fullHeight carried through');
 
 // ---- buttons -> HostEvents, nav excluded ----

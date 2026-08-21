@@ -208,10 +208,6 @@ export function generateCode(
       // The background instance. It renders nothing — its only job is loading the
       // iframe up front so the embed that shares its preRenderId paints instantly.
       lines.push(`${varName}.preRender();`);
-    } else if (cfg.preRenderId) {
-      lines.push(`// Attaches to the pre-rendered iframe with this preRenderId and positions`);
-      lines.push(`// it over ${container} — what the SDK's React wrapper calls for a connected embed.`);
-      lines.push(`${varName}.showPreRender();`);
     } else {
       lines.push(`${varName}.render();`);
     }
