@@ -39,7 +39,8 @@
     { "key": "preRender", "label": "Pre-render", "kind": "checkbox",
       "note": "PreRendered…Embed: renders nothing itself. An embed carrying the same preRenderId attaches to it." },
     { "key": "preRenderId", "label": "Pre-render id", "kind": "text", "in": "config",
-      "showWhen": "preRender", "placeholder": "required — e.g. shared-liveboard" }
+      "showWhen": "preRender", "placeholder": "required — e.g. shared-liveboard",
+      "note": "On a normal embed this CONNECTS it to the pre-render with the same id." }
   ],
 
   "embedTypes": [

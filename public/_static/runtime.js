@@ -1468,4 +1468,96 @@
     });
     window.addEventListener('focus', checkVersion);
   }
+
+  // ------------------------------------------------------------- code viewer
+  // Every published page can show the SDK code that would power it — the same
+  // generator the builder uses — plus a fork link, so a viewer can take a demo
+  // and make it theirs. config.showCode: false removes all of it.
+
+  var CODE_KEYWORDS = /\b(import|export|from|const|let|var|function|return|new|async|await|if|else|for|of|in|typeof|class|extends|true|false|null|undefined|default)\b/g;
+
+  function highlight(src) {
+    var esc = String(src)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    var out = '';
+    var rest = esc;
+    // one pass, longest-match-first: comments, strings, then everything else
+    var token = /(\/\/[^\n]*|\/\*[\s\S]*?\*\/)|("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)|(\b\d[\d.]*\b)/g;
+    var last = 0, m;
+    while ((m = token.exec(esc)) !== null) {
+      out += plain(esc.slice(last, m.index));
+      if (m[1]) out += '<i class="c-com">' + m[1] + '</i>';
+      else if (m[2]) out += '<i class="c-str">' + m[2] + '</i>';
+      else out += '<i class="c-num">' + m[3] + '</i>';
+      last = m.index + m[0].length;
+    }
+    out += plain(esc.slice(last));
+    return out;
+
+    function plain(chunk) {
+      return chunk
+        .replace(/&lt;(\/?)([A-Z][A-Za-z0-9]*)/g, '&lt;$1<i class="c-cmp">$2</i>')
+        .replace(/&lt;(\/?)([a-z][a-z0-9]*)/g, '&lt;$1<i class="c-tag">$2</i>')
+        .replace(CODE_KEYWORDS, '<i class="c-kw">$&</i>');
+    }
+  }
+
+  function codeOverlay() {
+    var flavor = 'react';
+    var root = el('div', 'sb-code-overlay');
+    root.hidden = true;
+    var head = el('div', 'sb-code-head');
+    var seg = el('div', 'sb-code-seg');
+    var btnReact = el('button', null, 'React');
+    var btnJs = el('button', null, 'JavaScript');
+    seg.appendChild(btnReact); seg.appendChild(btnJs);
+    var pathEl = el('span', 'sb-code-path');
+    var copyBtn = el('button', null, 'Copy');
+    var forkA = el('a', 'sb-code-fork', 'Fork & edit');
+    forkA.href = '/fork/' + M.projectId;
+    forkA.target = '_blank';
+    forkA.rel = 'noopener';
+    var closeBtn = el('button', null, 'Close');
+    head.appendChild(seg); head.appendChild(pathEl);
+    var spacer = el('span'); spacer.style.flex = '1'; head.appendChild(spacer);
+    head.appendChild(copyBtn); head.appendChild(forkA); head.appendChild(closeBtn);
+    var pre = el('pre', 'sb-code-pre');
+    root.appendChild(head); root.appendChild(pre);
+    document.body.appendChild(root);
+
+    var raw = '';
+    function load() {
+      btnReact.className = flavor === 'react' ? 'on' : '';
+      btnJs.className = flavor === 'esm' ? 'on' : '';
+      var path = currentPath();
+      pathEl.textContent = path;
+      pre.textContent = 'generating…';
+      fetch('/api/projects/' + M.projectId + '/code?path=' + encodeURIComponent(path) + '&flavor=' + flavor)
+        .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('could not generate')); })
+        .then(function (body) { raw = body.code || ''; pre.innerHTML = highlight(raw); })
+        .catch(function (err) { pre.textContent = String(err.message || err); });
+    }
+    btnReact.onclick = function () { flavor = 'react'; load(); };
+    btnJs.onclick = function () { flavor = 'esm'; load(); };
+    copyBtn.onclick = function () {
+      navigator.clipboard.writeText(raw).then(function () {
+        copyBtn.textContent = 'Copied';
+        setTimeout(function () { copyBtn.textContent = 'Copy'; }, 1400);
+      });
+    };
+    closeBtn.onclick = function () { root.hidden = true; };
+    return { root: root, load: load };
+  }
+
+  if (M.project.showCode !== false) {
+    var fab = el('button', 'sb-code-fab', '\u2039/\u203A');
+    fab.title = 'The SDK code behind this page';
+    var overlay = null;
+    fab.onclick = function () {
+      if (!overlay) overlay = codeOverlay();
+      if (overlay.root.hidden) { overlay.root.hidden = false; overlay.load(); }
+      else overlay.root.hidden = true;
+    };
+    document.body.appendChild(fab);
+  }
 })();

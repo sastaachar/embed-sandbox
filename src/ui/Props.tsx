@@ -192,8 +192,10 @@ function EmbedFields(p: PropsPanelProps & { spec: EmbedSpec }) {
         if (f.hideWhen && s.config[f.hideWhen]) {
           return <p className="hint" key={f.key}>{noteFor(f.hideWhen)}</p>;
         }
-        // Pre-render needs an id, so the field only exists once pre-render is on.
-        if (f.showWhen && !s[f.showWhen as keyof typeof s]) return null;
+        // Shown when pre-render is on (a PreRendered block needs its id), and ALSO when
+        // an id is already set on a normal embed — that id is what attaches it to a
+        // pre-render, and hiding it made the connection invisible in the panel.
+        if (f.showWhen && !s[f.showWhen as keyof typeof s] && !s.config[f.key]) return null;
         return <GenericField key={f.key} field={f} target={targetFor(f)} {...p} />;
       })}
 

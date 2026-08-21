@@ -194,6 +194,8 @@ export interface ProjectConfig {
   modals?: Record<string, Modal>;
   /** Show a modal when an embed reports an error. Default true — this is a debug tool. */
   showEmbedErrors?: boolean;
+  /** The ‹/› toggle on the published site: page code + fork link. Default true. */
+  showCode?: boolean;
   /** Push the derived palette into the embed as --ts-var-* variables. Default true. */
   themeEmbed?: boolean;
   /** Set false to stop a published page polling for document changes. Default: on. */
@@ -1028,6 +1030,7 @@ export function validateProjectConfig(v: unknown): ProjectConfig {
       out.catalog.syncedAt = cat.syncedAt;
     }
   }
+  if (raw.showCode !== undefined) out.showCode = optBool(raw.showCode, 'showCode');
   if (raw.showEmbedErrors !== undefined) {
     out.showEmbedErrors = optBool(raw.showEmbedErrors, 'showEmbedErrors');
   }

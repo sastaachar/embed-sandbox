@@ -166,7 +166,8 @@ get_config / save_config. set_site merges config; save_config and set_page repla
 
 config: name, thoughtSpotHost, sdkVersion (any npm version, default latest), authType,
 auth, theme, css, header, footer, embedDefaults, modals, catalog, showEmbedErrors,
-themeEmbed (default true: pushes the theme into embeds as --ts-var-*), live
+showCode (default true: a \u2039/\u203A toggle on the published site shows each page's SDK
+code with a fork-and-edit link), themeEmbed (default true: pushes the theme into embeds as --ts-var-*), live
 (default true: published pages poll /version and re-render on change).
 
 theme tokens: colorPrimary, colorPrimaryText, colorBg, colorSurface, colorText,

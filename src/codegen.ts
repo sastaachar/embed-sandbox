@@ -147,27 +147,70 @@ export function generateCode(
   const lines: string[] = [];
 
   // ---- one embed per block ----
+  // Buttons address embeds by name or page index; generated variables must resolve the
+  // same way, and a PreRender block is never a button's target by default.
+  const visible = embeds.filter((e) => !e.preRender);
+  const varOf = new Map<number, string>();
+  {
+    let pre = 0, vis = 0;
+    embeds.forEach((spec, i) => {
+      if (spec.preRender) {
+        varOf.set(i, embeds.filter((e) => e.preRender).length === 1 ? 'preRenderEmbed' : `preRenderEmbed${++pre}`);
+      } else {
+        varOf.set(i, visible.length === 1 ? 'embed' : `embed${++vis}`);
+      }
+    });
+  }
+  const varForTarget = (tgt: unknown): string | null => {
+    if (typeof tgt === 'number') return varOf.get(tgt) ?? null;
+    const idx = embeds.findIndex((e) => e.name === tgt);
+    return idx >= 0 ? varOf.get(idx)! : null;
+  };
+  const firstVisibleVar = varOf.get(embeds.findIndex((e) => !e.preRender)) ?? 'embed';
+
+  // The site-wide defaults once, not per instance — the theme blob would otherwise
+  // repeat for every embed and bury the two lines that matter.
+  const sharedDefaults = project.embedDefaults ?? {};
+  const hasSharedDefaults = Object.keys(sharedDefaults).length > 0;
+  if (hasSharedDefaults) {
+    lines.push(`// Applied to every embed on the site — theme and customisations.`);
+    lines.push(`const embedDefaults = ${literal(sharedDefaults, 0)};`);
+    lines.push('');
+  }
+
   embeds.forEach((spec, i) => {
-    const varName = embeds.length === 1 ? 'embed' : `embed${i + 1}`;
+    const varName = varOf.get(i)!;
     const cls = CLASS_FOR[spec.type];
-    const container = embeds.length === 1 ? '#embed' : `#embed-${i + 1}`;
-    const preRenderId = spec.preRender ? `pre-${path.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'root'}-${i + 1}` : null;
-    const cfg = embedConfigFor(spec, project, preRenderId);
+    // The container carries the variable's name, so the HTML and the JS read as one.
+    const container = `#${varName}`;
+    const cfg = embedConfigFor(spec, project, null, true);
 
     if (spec.type === 'viz' && !cfg.vizId) {
       lines.push(`// NOTE: type "viz" needs a vizId alongside liveboardId.`);
     }
-    lines.push(`const ${varName} = new ${cls}(${JSON.stringify(container)}, ${literal(cfg, 0)});`);
+    if (spec.preRender) {
+      lines.push(`// A separate instance for the background copy — never reuse the visible one.`);
+    }
+    const cfgLines = literal(cfg, 0).split('\n');
+    const spread = hasSharedDefaults ? '  ...embedDefaults,' : null;
+    if (cfgLines.length === 1) {
+      lines.push(`const ${varName} = new ${cls}(${JSON.stringify(container)}, ` +
+        (spread ? `{ ...embedDefaults, ...${cfgLines[0]} });` : `${cfgLines[0]});`));
+    } else {
+      lines.push(`const ${varName} = new ${cls}(${JSON.stringify(container)}, {`);
+      if (spread) lines.push(spread);
+      lines.push(...cfgLines.slice(1, -1));
+      lines.push(`});`);
+    }
     lines.push('');
 
     if (spec.preRender) {
-      lines.push(`// Pre-render builds the iframe up front so showing it later is instant. It must run`);
-      lines.push(`// before ${container} is on screen — the SDK puts the frame in a wrapper at`);
-      lines.push(`// document root, then showPreRender() syncs it onto the container's box.`);
+      // The background instance. It renders nothing — its only job is loading the
+      // iframe up front so the embed that shares its preRenderId paints instantly.
       lines.push(`${varName}.preRender();`);
-      lines.push('');
-      lines.push(`// Call this once ${container} exists and has real dimensions.`);
-      lines.push(`// A zero-size container here is the classic 0x0 pre-render stall.`);
+    } else if (cfg.preRenderId) {
+      lines.push(`// Attaches to the pre-rendered iframe with this preRenderId and positions`);
+      lines.push(`// it over ${container} — what the SDK's React wrapper calls for a connected embed.`);
       lines.push(`${varName}.showPreRender();`);
     } else {
       lines.push(`${varName}.render();`);
@@ -183,8 +226,7 @@ export function generateCode(
       if (!act) return;
       const p = act.params as Record<string, unknown>;
       const targets = Array.isArray(p.targets) ? p.targets : [];
-      const idx = typeof targets[0] === 'number' ? (targets[0] as number) : 0;
-      const target = embeds.length === 1 ? 'embed' : `embed${idx + 1}`;
+      const target = (targets.length ? varForTarget(targets[0]) : null) ?? firstVisibleVar;
       const payload = p.payload === undefined ? '' : `, ${literal(p.payload, 2)}`;
       lines.push(
         `document.querySelector('#btn-${i + 1}') // ${JSON.stringify(btn.label)}`,
@@ -511,7 +553,12 @@ export function generateCode(
   // CDN flavour: a complete, standalone page — no build step, matches how this
   // sandbox itself loads the SDK.
   const containers = embeds
-    .map((_, i) => (embeds.length === 1 ? `<div id="embed"></div>` : `<div id="embed-${i + 1}"></div>`))
+    .map((spec, i) => {
+      const id = varOf.get(i)!;
+      return spec.preRender
+        ? `<div id="${id}" hidden></div> <!-- background copy: renders nothing -->`
+        : `<div id="${id}"></div>`;
+    })
     .join('\n  ');
   const btnHtml = buttons.length
     ? '\n  ' +

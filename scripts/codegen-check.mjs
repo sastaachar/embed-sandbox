@@ -28,7 +28,12 @@ await put('/lb', { title: 'LB', blocks: [
     { label: 'West', action: 'set-filter', column: 'Region', values: ['West'] },
     { label: 'Elsewhere', action: 'nav', to: '/' },
   ]},
-  { type: 'embed', embed: { type: 'liveboard', liveboardId: 'lb-1', fullHeight: true, preRender: true, preRenderId: 'gen-home' } },
+  // The real pattern: a PreRender block loading in the background, and the visible
+  // embed connecting to it by id.
+  { type: 'embed', embed: { type: 'liveboard', name: 'bg', preRender: true,
+    config: { liveboardId: 'lb-1', preRenderId: 'gen-home' } } },
+  { type: 'embed', embed: { type: 'liveboard', name: 'main',
+    config: { liveboardId: 'lb-1', preRenderId: 'gen-home', fullHeight: true } } },
 ]});
 await put('/two', { blocks: [
   { type: 'embed', embed: { type: 'liveboard', liveboardId: 'lb-a' } },
@@ -75,10 +80,13 @@ const cdnNoInit = await code('path=/lb&flavor=cdn&init=0');
 ok(count(cdnNoInit, 'init({') === 1, 'cdn keeps init even with init=0, since it is standalone');
 
 // ---- preRender ordering is explained, not just emitted ----
-ok(cdn.includes('.preRender();') && cdn.includes('.showPreRender();'), 'preRender + showPreRender both emitted');
-ok(cdn.indexOf('.preRender();') < cdn.indexOf('.showPreRender();'), 'preRender comes before showPreRender');
+// Two instances, one call each: the PreRender block warms with preRender(); the
+// visible embed carrying the same preRenderId shows with showPreRender().
+ok(cdn.includes('preRenderEmbed.preRender();'), 'the PreRender block gets its own instance and preRender()');
+ok(/\bembed(\d+)?\.showPreRender\(\);/.test(cdn), 'the visible embed attaches with showPreRender()');
+ok(cdn.indexOf('.preRender();') < cdn.indexOf('.showPreRender();'), 'background instance is created first');
 ok(cdn.includes('preRenderId'), 'a preRenderId is generated');
-ok(/0x0|zero-size/i.test(cdn), 'the 0x0 stall is called out in a comment');
+ok(/Attaches to the pre-rendered iframe/.test(cdn), 'the attach step is explained in a comment');
 ok(cdn.includes('fullHeight: true'), 'fullHeight carried through');
 
 // ---- buttons -> HostEvents, nav excluded ----
@@ -91,7 +99,8 @@ ok(!cdn.includes("HostEvent.undefined"), 'nav/open-url buttons produce no HostEv
 // ---- several embeds on one page ----
 const two = await code('path=/two&flavor=esm');
 ok(two.includes('const embed1') && two.includes('const embed2'), 'multi-embed pages get numbered vars');
-ok(two.includes('#embed-1') && two.includes('#embed-2'), 'each embed gets its own container id');
+// Containers carry the variable names now, so HTML and JS read as one.
+ok(two.includes('#embed1') && two.includes('#embed2'), 'each embed gets its own container id');
 ok(two.includes('new SearchEmbed'), 'the second block uses its own embed class');
 ok(two.includes('embed2.trigger'), 'embedIndex:1 targets the second embed in generated code');
 
