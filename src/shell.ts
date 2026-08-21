@@ -108,6 +108,7 @@ border-radius:50%;border:1px solid var(--sb-border);background:var(--sb-surface)
 color:var(--sb-text);font:600 15px/1 ui-monospace,Menlo,monospace;cursor:pointer;
 box-shadow:0 4px 14px rgba(15,18,45,.18)}
 .sb-code-fab:hover{border-color:var(--sb-primary);color:var(--sb-primary)}
+.sb-code-overlay[hidden]{display:none}
 .sb-code-overlay{position:fixed;inset:auto 18px 74px 18px;max-width:900px;margin-left:auto;
 height:min(70vh,640px);z-index:95;display:flex;flex-direction:column;
 background:var(--sb-surface);border:1px solid var(--sb-border);border-radius:12px;

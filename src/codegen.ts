@@ -60,6 +60,18 @@ function buttonsIn(page: PageConfig): ButtonSpec[] {
   return out;
 }
 
+/** k="str" for strings, bare for true, braces for everything else — plain JSX. */
+function jsxProp(pad: string, key: string, value: unknown): string[] {
+  if (value === true) return [`${pad}${key}`];
+  if (typeof value === 'string') return [`${pad}${key}=${JSON.stringify(value)}`];
+  const rendered = literal(value, 0).split('\n');
+  if (rendered.length === 1) return [`${pad}${key}={${rendered[0]}}`];
+  const out = [`${pad}${key}={${rendered[0]}`];
+  for (const extra of rendered.slice(1)) out.push(`${pad}${extra}`);
+  out[out.length - 1] += '}';
+  return out;
+}
+
 /** Text is JSX children here, so the two characters that would break it are escaped. */
 function escapeJsx(text: string | undefined): string {
   return String(text ?? '').replace(/[{}]/g, (c) => `{'${c}'}`);
@@ -244,11 +256,89 @@ export function generateCode(
     // The React wrappers take the same config as props, and useEmbedRef gives the
     // trigger() a button needs — so a page is a component, not a pile of imperative
     // constructor calls.
-    const comps = [...new Set(embeds.map((e) => CLASS_FOR[e.type]))];
+    const comps = [...new Set(visible.map((e) => CLASS_FOR[e.type]))];
     const reactImports = [...comps, ...(needsHostEvent ? ['useEmbedRef'] : [])];
     const preRenderImports = [...new Set(
       embeds.filter((e) => e.preRender).map((e) => `PreRendered${CLASS_FOR[e.type]}`),
     )];
+
+    // Which embed a button drives is the point of `targets`; sending everything to the
+    // first one would be a snippet that quietly does the wrong thing.
+    const refFor = (i: number) => (visible.length === 1 ? 'embedRef' : `embedRef${i + 1}`);
+    const refsForTargets = (targets: unknown): string[] => {
+      const list = Array.isArray(targets) ? targets : targets === undefined ? [] : [targets];
+      if (!list.length) return [refFor(0)];
+      if (list.includes('all')) return visible.map((_, i) => refFor(i));
+      return list
+        .map((tgt) => {
+          const idx = typeof tgt === 'number'
+            ? visible.indexOf(embeds[tgt])
+            : visible.findIndex((e) => e.name === tgt);
+          return idx >= 0 ? refFor(idx) : null;
+        })
+        .filter(Boolean) as string[];
+    };
+
+    // EVERY action, not just host events: a button that navigates still needs its
+    // handler, and emitting an onClick that points at nothing would not compile.
+    let usesNav = false;
+    const statementFor = (a: { type: string; params: Record<string, unknown> }): string | null => {
+      const pr = a.params;
+      switch (a.type) {
+        case 'HostEvent': {
+          const payload = pr.payload === undefined ? '' : `, ${literal(pr.payload, 4)}`;
+          const targets = refsForTargets(pr.targets);
+          // A store key means the event ANSWERS (GetFilters, GetParameters…): the
+          // response lands in the matching state, or it is invisible.
+          const sink = pr.store
+            ? `.then(set${varName(String(pr.store)).replace(/^./, (c) => c.toUpperCase())})`
+            : '';
+          return targets.length === 1
+            ? `${targets[0]}.current.trigger(HostEvent.${pr.type}${payload})${sink};`
+            : `[${targets.join(', ')}].forEach((e) => e.current.trigger(HostEvent.${pr.type}${payload}));`;
+        }
+        case 'nav':
+          usesNav = true;
+          return `goTo(${JSON.stringify(pr.to)});`;
+        case 'set':
+          return `set${varName(String(pr.key)).replace(/^./, (c) => c.toUpperCase())}(${literal(pr.value ?? '', 4)});`;
+        case 'open-url':
+          return `window.open(${JSON.stringify(pr.url)}, ${JSON.stringify(pr.target || '_blank')});`;
+        case 'open-modal':
+          return `openModal(${JSON.stringify(pr.name)});`;
+        case 'close-modal':
+          return `closeModal();`;
+        default:
+          return null;
+      }
+    };
+
+
+    // An embed's event handlers become on<Event> props — the state the page declares
+    // is dead weight unless something actually sets it.
+    const eventProps = (spec: EmbedSpec, pad: string): string[] => {
+      const out: string[] = [];
+      for (const h of spec.embedEventHandlers ?? []) {
+        const stmts: string[] = [];
+        for (const a of h.actions ?? []) {
+          const pr = a.params as Record<string, any>;
+          if (a.type === 'set') {
+            const setter = `set${varName(String(pr.key)).replace(/^./, (c) => c.toUpperCase())}`;
+            stmts.push(`${setter}(${pr.value ? `payload.${pr.value}` : 'payload'})`);
+          } else {
+            const s = statementFor(a as any);
+            if (s) stmts.push(s.replace(/;$/, ''));
+          }
+        }
+        if (!stmts.length) continue;
+        const guard = h.id !== undefined ? `payload?.data?.id === ${JSON.stringify(h.id)} && ` : '';
+        const body = stmts.length === 1 && !h.id
+          ? `(payload) => ${stmts[0]}`
+          : `(payload) => { ${guard ? `if (!(${guard.slice(0, -4)})) return; ` : ''}${stmts.join('; ')}; }`;
+        out.push(`${pad}on${h.type}={${body}}`);
+      }
+      return out;
+    };
 
     // The whole page, not just its embeds. Chrome and blocks the SDK does not own
     // become placeholders named for what they are, so the shape is obvious and the
@@ -312,19 +402,13 @@ export function generateCode(
             }
             // Everything else keeps its preRenderId — that id is how the SDK attaches
             // this embed to the pre-rendered one.
-            const ref = embeds.length === 1 ? 'embedRef' : `embedRef${embedSeen + 1}`;
+            const ref = visible.length === 1 ? 'embedRef' : `embedRef${embedSeen + 1}`;
             embedSeen += 1;
             out.push(`${pad}<${cls}`);
             if (needsHostEvent) out.push(`${pad}  ref={${ref}}`);
             if (Object.keys(project.embedDefaults ?? {}).length) out.push(`${pad}  {...embedDefaults}`);
-            for (const [k, v] of Object.entries(cfg)) {
-              if (v === true) { out.push(`${pad}  ${k}`); continue; }
-              const rendered = literal(v, 0).split('\n');
-              out.push(`${pad}  ${k}={${rendered[0]}`);
-              for (const extra of rendered.slice(1)) out.push(`${pad}  ${extra}`);
-              if (rendered.length > 1) out[out.length - 1] += '}';
-              else out[out.length - 1] += '}';
-            }
+            for (const [k, v] of Object.entries(cfg)) out.push(...jsxProp(`${pad}  `, k, v));
+            out.push(...eventProps(spec, `${pad}  `));
             out.push(`${pad}/>`);
             break;
           }
@@ -348,56 +432,17 @@ export function generateCode(
       // With a liveboardId it pre-fetches that board's data; without one it loads the
       // generic shell and the visible embed navigates it (both documented use cases).
       const lb = b.embed.config.liveboardId;
-      preRenderJsx.push(lb
-        ? `      <PreRendered${cls} preRenderId=${JSON.stringify(id)} liveboardId={${JSON.stringify(lb)}} />`
-        : `      <PreRendered${cls} preRenderId=${JSON.stringify(id)} />`);
-    });
-
-    // Which embed a button drives is the point of `targets`; sending everything to the
-    // first one would be a snippet that quietly does the wrong thing.
-    const refFor = (i: number) => (embeds.length === 1 ? 'embedRef' : `embedRef${i + 1}`);
-    const refsForTargets = (targets: unknown): string[] => {
-      const list = Array.isArray(targets) ? targets : targets === undefined ? [] : [targets];
-      if (!list.length) return [refFor(0)];
-      if (list.includes('all')) return embeds.map((_, i) => refFor(i));
-      return list
-        .map((tgt) => {
-          const idx = typeof tgt === 'number'
-            ? tgt
-            : embeds.findIndex((e) => e.name === tgt);
-          return idx >= 0 && idx < embeds.length ? refFor(idx) : null;
-        })
-        .filter(Boolean) as string[];
-    };
-
-    // EVERY action, not just host events: a button that navigates still needs its
-    // handler, and emitting an onClick that points at nothing would not compile.
-    let usesNav = false;
-    const statementFor = (a: { type: string; params: Record<string, unknown> }): string | null => {
-      const pr = a.params;
-      switch (a.type) {
-        case 'HostEvent': {
-          const payload = pr.payload === undefined ? '' : `, ${literal(pr.payload, 4)}`;
-          const targets = refsForTargets(pr.targets);
-          return targets.length === 1
-            ? `${targets[0]}.current.trigger(HostEvent.${pr.type}${payload});`
-            : `[${targets.join(', ')}].forEach((e) => e.current.trigger(HostEvent.${pr.type}${payload}));`;
-        }
-        case 'nav':
-          usesNav = true;
-          return `goTo(${JSON.stringify(pr.to)});`;
-        case 'set':
-          return `set${varName(String(pr.key)).replace(/^./, (c) => c.toUpperCase())}(${literal(pr.value ?? '', 4)});`;
-        case 'open-url':
-          return `window.open(${JSON.stringify(pr.url)}, ${JSON.stringify(pr.target || '_blank')});`;
-        case 'open-modal':
-          return `openModal(${JSON.stringify(pr.name)});`;
-        case 'close-modal':
-          return `closeModal();`;
-        default:
-          return null;
+      const handlerProps = eventProps(b.embed, '        ');
+      if (!lb && !handlerProps.length) {
+        preRenderJsx.push(`      <PreRendered${cls} preRenderId=${JSON.stringify(id)} />`);
+      } else {
+        preRenderJsx.push(`      <PreRendered${cls}`);
+        preRenderJsx.push(`        preRenderId=${JSON.stringify(id)}`);
+        if (lb) preRenderJsx.push(`        liveboardId=${JSON.stringify(lb)}`);
+        preRenderJsx.push(...handlerProps);
+        preRenderJsx.push(`      />`);
       }
-    };
+    });
 
     const handlers = buttons
       .map((btn, i) => {
@@ -412,7 +457,7 @@ export function generateCode(
       .filter(Boolean) as string[];
 
     const refs = needsHostEvent
-      ? embeds.map((_, i) => `  const ${embeds.length === 1 ? 'embedRef' : `embedRef${i + 1}`} = useEmbedRef();`)
+      ? visible.map((_, i) => `  const ${visible.length === 1 ? 'embedRef' : `embedRef${i + 1}`} = useEmbedRef();`)
       : [];
 
     const defaults = project.embedDefaults ?? {};
@@ -501,7 +546,9 @@ export function generateCode(
       `    <>`,
       ...headerJsx,
       ...(usedPreRender.size
-        ? [`      {/* Pre-renders off-screen. The <${[...usedPreRender][0].replace('PreRendered', '')} /> below with the same preRenderId attaches to it. */}`,
+        ? [`      {/* Loads in the background, renders nothing. ${visible.length
+             ? `The <${[...usedPreRender][0].replace('PreRendered', '')} /> below with the same preRenderId shows it.`
+             : 'Pages that use the same preRenderId show it instantly.'} */}`,
            ...preRenderJsx]
         : []),
       `      <main>`,
