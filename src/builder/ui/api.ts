@@ -32,11 +32,15 @@ export async function loadDoc(): Promise<Doc> {
   return doc;
 }
 
-export async function projectVersion(): Promise<number | null> {
+export interface EditLock { holder: string; note?: string; at: number; expiresAt: number }
+
+export async function projectVersion(): Promise<{ updatedAt: number; lock: EditLock | null } | null> {
   const res = await fetch(`${BASE}/version`, { cache: 'no-store' });
   if (!res.ok) return null;
   const body = await res.json().catch(() => null);
-  return body && typeof body.updatedAt === 'number' ? body.updatedAt : null;
+  return body && typeof body.updatedAt === 'number'
+    ? { updatedAt: body.updatedAt, lock: (body.lock as EditLock | null) ?? null }
+    : null;
 }
 
 export interface SaveExtras {

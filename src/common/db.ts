@@ -29,7 +29,19 @@ export interface Project {
   forkedFrom: string | null;
   /** Server-only cluster connection (never shipped to the page). null if none set. */
   connection: Connection | null;
+  /** Advisory edit lock (an agent announcing itself). null when unheld or expired. */
+  lock: EditLock | null;
 }
+
+export interface EditLock {
+  holder: string;
+  note?: string;
+  at: number;
+  expiresAt: number;
+}
+
+/** Advisory only — nothing is blocked. Expiry means a dead agent cannot wedge a demo. */
+export const LOCK_TTL_MS = 5 * 60_000;
 
 export interface Page {
   path: string;
@@ -83,7 +95,7 @@ export async function createProject(
   ]);
 
   return {
-    project: { id, config: merged, createdAt: now, updatedAt: now, forkedFrom: null, connection: null },
+    project: { id, config: merged, createdAt: now, updatedAt: now, forkedFrom: null, connection: null, lock: null },
     token,
   };
 }
@@ -94,7 +106,8 @@ export async function getProject(env: Env, id: string): Promise<Project | null> 
   const row = await env.DB.prepare(
     `SELECT id, config, created_at, updated_at, forked_from,
             conn_host, conn_username, conn_secret_type, conn_verified_at,
-            conn_secret IS NOT NULL AS has_secret
+            conn_secret IS NOT NULL AS has_secret,
+            lock_holder, lock_note, lock_at
      FROM projects WHERE id = ?`,
   )
     .bind(id)
@@ -109,8 +122,20 @@ export async function getProject(env: Env, id: string): Promise<Project | null> 
       conn_secret_type: string | null;
       conn_verified_at: number | null;
       has_secret: number;
+      lock_holder: string | null;
+      lock_note: string | null;
+      lock_at: number | null;
     }>();
   if (!row) return null;
+  const lock: EditLock | null =
+    row.lock_holder && row.lock_at && Date.now() - row.lock_at < LOCK_TTL_MS
+      ? {
+          holder: row.lock_holder,
+          ...(row.lock_note ? { note: row.lock_note } : {}),
+          at: row.lock_at,
+          expiresAt: row.lock_at + LOCK_TTL_MS,
+        }
+      : null;
   const connection: Connection | null = row.conn_host
     ? {
         host: row.conn_host,
@@ -127,7 +152,29 @@ export async function getProject(env: Env, id: string): Promise<Project | null> 
     updatedAt: row.updated_at,
     forkedFrom: row.forked_from ?? null,
     connection,
+    lock,
   };
+}
+
+export async function setLock(env: Env, id: string, holder: string, note?: string): Promise<EditLock> {
+  const at = Date.now();
+  await env.DB.prepare('UPDATE projects SET lock_holder = ?, lock_note = ?, lock_at = ? WHERE id = ?')
+    .bind(holder, note ?? null, at, id)
+    .run();
+  return { holder, ...(note ? { note } : {}), at, expiresAt: at + LOCK_TTL_MS };
+}
+
+export async function clearLock(env: Env, id: string): Promise<void> {
+  await env.DB.prepare('UPDATE projects SET lock_holder = NULL, lock_note = NULL, lock_at = NULL WHERE id = ?')
+    .bind(id)
+    .run();
+}
+
+/** Keeps a held lock alive on agent activity; a no-op when nothing is held. */
+export async function refreshLock(env: Env, id: string): Promise<void> {
+  await env.DB.prepare('UPDATE projects SET lock_at = ? WHERE id = ? AND lock_holder IS NOT NULL')
+    .bind(Date.now(), id)
+    .run();
 }
 
 /**
@@ -204,7 +251,7 @@ export async function forkProject(
 
   // The fork deliberately gets no connection: credentials are not copyable.
   return {
-    project: { id, config, createdAt: now, updatedAt: now, forkedFrom: sourceId, connection: null },
+    project: { id, config, createdAt: now, updatedAt: now, forkedFrom: sourceId, connection: null, lock: null },
     token,
     copiedPages: pages.length,
   };

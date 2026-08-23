@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { Block, Doc, EmbedType, Loc } from './types';
 import { blockAt, deepClone, indexAt, listAt, listFromKey, listKey, locOf, setEmbedType } from './blocks';
-import { getToken, loadDoc, PID, projectVersion, saveDoc, setToken, verifyToken } from './api';
+import { getToken, loadDoc, PID, projectVersion, saveDoc, setToken, verifyToken, type EditLock } from './api';
 import { clearCluster, clusterUsername } from './cluster';
 import { useBuilder } from './store';
 import { Canvas, wireResize } from './Canvas';
@@ -57,6 +57,9 @@ export function App() {
   const [canvasEpoch, setCanvasEpoch] = useState(0);
   const [showJson, setShowJson] = useState(false);
   const [showMap, setShowMap] = useState(false);
+  // The advisory agent lock: warn, never block — Edit anyway stands until the lock clears.
+  const [agentLock, setAgentLock] = useState<EditLock | null>(null);
+  const [lockDismissed, setLockDismissed] = useState(false);
   const [showCode, setShowCode] = useState(false);
   // null until init() reports: AuthStatus.SUCCESS -> 'ok', any other status -> 'bad'.
   const [authState, setAuthState] = useState<'ok' | 'bad' | null>(null);
@@ -84,15 +87,19 @@ export function App() {
   // notice. Poll the same /version the published pages poll, and pull the document when
   // it moves — but never on top of unsaved edits: say so and let the user decide.
   const seenVersion = useRef<number | null>(null);
+  const prevLock = useRef<EditLock | null>(null);
   useEffect(() => {
     if (!ready) return;
     let live = true;
     const tick = async () => {
       const v = await projectVersion().catch(() => null);
       if (!live || v === null) return;
-      if (seenVersion.current === null) { seenVersion.current = v; return; }
-      if (v === seenVersion.current) return;
-      seenVersion.current = v;
+      if (Boolean(v.lock) !== Boolean(prevLock.current)) setLockDismissed(false);
+      prevLock.current = v.lock;
+      setAgentLock(v.lock);
+      if (seenVersion.current === null) { seenVersion.current = v.updatedAt; return; }
+      if (v.updatedAt === seenVersion.current) return;
+      seenVersion.current = v.updatedAt;
       if (b.dirty) {
         setStatus('changed elsewhere — save or reload to pick it up', 'err');
         return;
@@ -312,6 +319,21 @@ export function App() {
 
   return (
     <div className="shell on" id="work">
+      {agentLock && !lockDismissed && (
+        <div className="lock-veil" id="lockVeil">
+          <div className="lock-card">
+            <div className="lock-title">🤖 {agentLock.holder} is vibe-coding this demo</div>
+            <p>
+              An AI agent holds the edit lock{agentLock.note ? <> — “{agentLock.note}”</> : null}.
+              Your changes might be overwritten by the AI overlords.
+            </p>
+            <p className="lock-sub">
+              This clears when the agent releases it, or 5 minutes after its last edit.
+            </p>
+            <button id="lockEditAnyway" onClick={() => setLockDismissed(true)}>Edit anyway</button>
+          </div>
+        </div>
+      )}
       <header className="toolbar">
         {/* The title IS the project name — a separate field wrapped the toolbar onto a
             second row, which pushed the canvas down and took drop targets off-screen. */}

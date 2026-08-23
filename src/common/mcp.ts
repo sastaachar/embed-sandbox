@@ -3,6 +3,7 @@ import { buildGraph } from './graph';
 import { publicUrls } from './urls';
 import { effectiveProject, resolveTheme, tsVarsFor } from './theme';
 import {
+  clearLock,
   deletePage,
   forkProject,
   getPage,
@@ -10,6 +11,8 @@ import {
   listPages,
   createProject,
   putPage,
+  refreshLock,
+  setLock,
   setProjectConfig,
   updateProjectConfig,
   verifyToken,
@@ -162,10 +165,14 @@ required for every write; reads are public because sharing is the point.
    details here and you set_site the auth block. Then call get_config again — connected
    flips to true. The connect link keeps the credential server-side for every auth type
    except TrustedAuthTokenCookieless/TrustedAuthToken, where the page must ship it.
-3. search_metadata → real liveboard/answer/worksheet ids, never guess ids.
-4. save_config with the whole document: config + pages keyed by path.
-5. get_graph → check pages connect and nothing dangles. get_code → show the human
+3. lock_project → announce yourself BEFORE the first edit. Viewers of the published
+   page get a "being vibe-coded right now" banner and the builder warns the human; every
+   save refreshes the lock, and it expires 5 minutes after your last edit anyway.
+4. search_metadata → real liveboard/answer/worksheet ids, never guess ids.
+5. save_config with the whole document: config + pages keyed by path.
+6. get_graph → check pages connect and nothing dangles. get_code → show the human
    real SDK code. get_urls → hand over links.
+7. unlock_project → done editing; the banner disappears immediately.
 
 Small edits: get_page / set_page (replace, not merge). Whole-document edits:
 get_config / save_config. set_site merges config; save_config and set_page replace.
@@ -407,6 +414,34 @@ const TOOLS = [
     },
   },
   {
+    name: 'lock_project',
+    description:
+      'Announce that you are editing: take the advisory edit lock BEFORE your first save. ' +
+      'The published page shows viewers a small "being vibe-coded right now" banner and the ' +
+      'builder warns the human (they can still choose Edit anyway) until you unlock_project ' +
+      'or the lock expires — 5 minutes after your last save_config/set_page/set_site, each of ' +
+      'which refreshes it. Nothing is ever blocked; this is a courtesy signal. Call it again ' +
+      'any time to refresh or to change the holder text.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        holder: {
+          type: 'string',
+          description: 'Who is editing, shown to viewers — e.g. "Claude". Defaults to "an AI agent".',
+        },
+        note: { type: 'string', description: 'Optional: what you are working on, e.g. "adding a Search page".' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'unlock_project',
+    description:
+      'Release the advisory edit lock when you are done editing, so the "being vibe-coded" ' +
+      'banner disappears for viewers immediately instead of after the 5-minute expiry.',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+  },
+  {
     name: 'create_project',
     description:
       'Make a new demo site and return its id, its edit token, and the URLs to open it. The token is shown once and never again — hand it back to the human. No token is needed to call this.',
@@ -572,7 +607,22 @@ async function callTool(
       const patch = validateProjectConfig(args.config);
       const updated = await updateProjectConfig(env, projectId, patch);
       if (!updated) throw new ValidationError('project no longer exists');
+      await refreshLock(env, projectId);
       return { ok: true, config: updated.config };
+    }
+    case 'lock_project': {
+      const holder = String(args.holder ?? 'an AI agent').slice(0, 80).trim() || 'an AI agent';
+      const note = typeof args.note === 'string' ? args.note.slice(0, 200) : undefined;
+      const lock = await setLock(env, projectId, holder, note);
+      return {
+        ok: true,
+        lock,
+        note: 'Viewers now see the being-vibe-coded banner. It clears on unlock_project, or 5 minutes after your last edit.',
+      };
+    }
+    case 'unlock_project': {
+      await clearLock(env, projectId);
+      return { ok: true, locked: false };
     }
     case 'list_pages': {
       const pages = await listPages(env, projectId);
@@ -601,6 +651,7 @@ async function callTool(
       const path = normalizePath(String(args.path ?? ''));
       const config = validatePageConfig(args.page);
       await putPage(env, projectId, path, config);
+      await refreshLock(env, projectId);
       return { ok: true, path };
     }
     case 'get_code': {
@@ -671,6 +722,7 @@ async function callTool(
           if (!kept.has(page.path)) await deletePage(env, projectId, page.path);
         }
       }
+      await refreshLock(env, projectId);
       const saved = await getProject(env, projectId);
       const pages = await listPages(env, projectId);
       return {

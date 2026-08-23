@@ -613,8 +613,8 @@ moment — an agent over MCP, someone in the builder, another tab. So the page w
 its own version and re-renders in place:
 
 ```
-GET /api/projects/<id>/version    -> { updatedAt }      # tiny, and the one that repeats
-GET /api/projects/<id>/manifest   -> the full manifest  # fetched only when it moves
+GET /api/projects/<id>/version    -> { updatedAt, lock } # tiny, and the one that repeats
+GET /api/projects/<id>/manifest   -> the full manifest   # fetched only when it moves
 ```
 
 The manifest endpoint returns exactly what the shell inlines (same `buildManifest`),
@@ -623,6 +623,19 @@ load. An embed whose config is byte-identical keeps its iframe; only what change
 remounts. Polling pauses while the tab is hidden and catches up on focus.
 
 `live: false` in site config opts a project out entirely.
+
+### The advisory edit lock
+
+An agent editing over MCP announces itself first (`lock_project`, or
+`POST /api/projects/<id>/lock` with the edit token), and every viewer of the
+published page gets a small banner — *"🤖 … is vibe-coding this demo right now —
+the AI overlords may change this page under you"* — while the builder veils the
+canvas with an **Edit anyway** escape hatch. `unlock_project` /
+`DELETE …/lock` clears it immediately; otherwise it expires 5 minutes after the
+agent's last save (each MCP save refreshes it), so a dead agent cannot wedge a
+demo. It is advisory only: nothing is ever blocked, and the lock state rides on
+the `/version` poll the page already makes. `GET …/lock` is public (holder and
+note are display strings, never a credential).
 
 ## Forking
 

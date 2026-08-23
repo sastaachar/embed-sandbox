@@ -1500,12 +1500,35 @@
     render();
   }
 
+  // The advisory edit lock: an agent editing this project over MCP announces itself,
+  // and the page says so rather than changing silently under the viewer.
+  var lockStamp = null;
+  var lockEl = null;
+
+  function applyLock(lock) {
+    var stamp = lock ? lock.holder + '@' + lock.at : null;
+    if (stamp === lockStamp) return;
+    lockStamp = stamp;
+    if (lockEl) { lockEl.remove(); lockEl = null; }
+    if (!lock) return;
+    lockEl = el('div', 'sb-lock-banner');
+    lockEl.appendChild(el('span', 'sb-lock-dot'));
+    lockEl.appendChild(
+      document.createTextNode(
+        '🤖 ' + (lock.holder || 'an AI agent') +
+          ' is vibe-coding this demo right now — the AI overlords may change this page under you.',
+      ),
+    );
+    document.body.appendChild(lockEl);
+  }
+
   function checkVersion() {
     if (liveBusy || document.hidden) return;
     liveBusy = true;
     fetch('/api/projects/' + M.projectId + '/version', { cache: 'no-store' })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (body) {
+        if (body) applyLock(body.lock || null);
         if (!body || !body.updatedAt || body.updatedAt === liveVersion) return null;
         return fetch('/api/projects/' + M.projectId + '/manifest', { cache: 'no-store' })
           .then(function (r) { return r.ok ? r.json() : null; })
@@ -1518,6 +1541,8 @@
       .catch(function () { /* offline or mid-deploy: try again on the next tick */ })
       .then(function () { liveBusy = false; });
   }
+
+  applyLock(M.lock || null);
 
   if (M.project.live !== false) {
     liveTimer = setInterval(checkVersion, LIVE_POLL_MS);

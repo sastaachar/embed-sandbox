@@ -1,4 +1,5 @@
 import {
+  clearLock,
   countPages,
   createProject,
   forkProject,
@@ -9,6 +10,7 @@ import {
   listPages,
   putPage,
   setConnection,
+  setLock,
   setProjectConfig,
   updateProjectConfig,
   verifyToken,
@@ -243,7 +245,31 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
   // page itself; `version` is deliberately tiny because it is the one that repeats.
   if (segments.length === 4 && segments[3] === 'version') {
     if (request.method !== 'GET') return json({ error: 'method not allowed' }, 405);
-    return json({ updatedAt: project.updatedAt });
+    // lock rides along so a page can show/clear the overlay without a manifest fetch.
+    return json({ updatedAt: project.updatedAt, lock: project.lock });
+  }
+
+  // /api/projects/:id/lock — the advisory edit lock. An agent acquires it before
+  // editing so the published page and the builder can say "being vibe-coded right
+  // now". Nothing is ever blocked by it; it expires on its own (LOCK_TTL_MS).
+  if (segments.length === 4 && segments[3] === 'lock') {
+    if (request.method === 'GET') {
+      return json({ locked: !!project.lock, lock: project.lock });
+    }
+    if (request.method !== 'POST' && request.method !== 'DELETE') {
+      return json({ error: 'method not allowed' }, 405);
+    }
+    const denied = await requireToken(request, env, projectId);
+    if (denied) return denied;
+    if (request.method === 'DELETE') {
+      await clearLock(env, projectId);
+      return json({ ok: true, locked: false });
+    }
+    const body = await readJson(request);
+    const holder = String(body.holder ?? 'an AI agent').slice(0, 80).trim() || 'an AI agent';
+    const note = typeof body.note === 'string' ? body.note.slice(0, 200) : undefined;
+    const lock = await setLock(env, projectId, holder, note);
+    return json({ ok: true, locked: true, lock });
   }
 
   if (segments.length === 4 && segments[3] === 'manifest') {
