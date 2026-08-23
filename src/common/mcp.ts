@@ -194,7 +194,9 @@ page: { title, css, modals, blocks: [...] }.
 ## Blocks
 
 heading { text, level 1|2|3 } · text { text } · divider · spacer { size }
-value { key, label } — shows a value-store key, updates live
+value { key, label, placeholder } — shows a value-store key, updates live;
+      placeholder shows until the key is first set (default "—") — use it for
+      loading states ("Loading the Liveboard…")
 buttons { align, items: [{ label, variant primary|secondary|ghost, actions: [...] }] }
 row { gap, align, columns: [{ span, blocks }] } — rows cannot nest inside columns
 embed — see below. Any block takes style (inline CSS escape hatch).
@@ -252,6 +254,15 @@ or writes a literal (a load flag, a status string) with { key, literal }:
   { type: "Load", actions: [{ type: "set", params: { key: "status",
     literal: "Liveboard is loaded" } }] }
 Read back anywhere with {{orderId}}, a value block, or window.<namespace>.getVariable().
+
+Loading states, the recommended pattern: Load fires when the iframe is up, well before
+anything is drawn; LiveboardRendered fires when rendering completes and is what
+ThoughtSpot's own examples use to hide a spinner. So: a value block with a placeholder
+("Loading…"), a Load handler setting an interim literal ("Rendering…"), and a
+LiveboardRendered handler setting the final one ("✓ Ready"). Do NOT surface AuthExpire
+or map Error to a status literal — AuthExpire-shaped payloads arrive on the Error
+channel every ~5 minutes on a healthy embed and will flip your status spuriously; the
+runtime already modals genuinely fatal errors.
 
 ## Auth — what a PUBLISHED page can use
 

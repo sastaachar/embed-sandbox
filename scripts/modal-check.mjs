@@ -75,6 +75,7 @@ ok(await code(`/api/projects/${PID}/pages`, { method: 'PUT', headers: auth,
 ok(await code(`/api/projects/${PID}/pages`, { method: 'PUT', headers: auth,
   body: JSON.stringify({ path: '/lit', page: { title: 'Lit', blocks: [
     { type: 'value', key: 'status', label: 'Status' },
+    { type: 'value', key: 'neverSet', label: 'Placeholder demo', placeholder: 'Loading the Liveboard…' },
     { type: 'embed', embed: { type: 'liveboard', config: { liveboardId: 'lb-2' },
       embedEventHandlers: [
         { type: 'Load', actions: [
@@ -209,6 +210,8 @@ ok(lit.viaWrapper === 'yes', 'value: { literal: … } wrapper form normalizes to
 ok(lit.fromPath === 'viz-7', 'payload-path set still reads out of the payload beside literals');
 const litValue = await pg.locator('.sb-value-out').first().textContent().catch(() => null);
 ok(litValue === 'Liveboard is loaded', `value block shows the literal (got ${litValue})`);
+const phValue = await pg.locator('.sb-value-out').nth(1).textContent().catch(() => null);
+ok(phValue === 'Loading the Liveboard…', `unset value block shows its placeholder, not — (got ${phValue})`);
 ok(warns.every(w => !w.includes('unknown action type')),
   'HostEvent in a handler runs the normalized vocabulary — no "unknown action type" warning');
 

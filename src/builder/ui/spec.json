@@ -22,7 +22,8 @@
     "spacer": [{ "key": "size", "label": "Size", "kind": "text" }],
     "value": [
       { "key": "key", "label": "Store key", "kind": "text" },
-      { "key": "label", "label": "Label", "kind": "text" }
+      { "key": "label", "label": "Label", "kind": "text" },
+      { "key": "placeholder", "label": "Placeholder", "kind": "text", "placeholder": "shown until the value arrives" }
     ],
     "row": [
       { "key": "columns", "label": "Columns", "kind": "columns", "max": 4 },

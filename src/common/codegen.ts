@@ -478,8 +478,12 @@ export function generateCode(
     // the reader can see what a handler writes and what a stat displays.
     const readKeys = new Set<string>();
     const writeKeys = new Set<string>();
+    const seedFor = new Map<string, string>();
     walk(page.blocks, (b) => {
-      if (b.type === 'value') readKeys.add(b.key);
+      if (b.type === 'value') {
+        readKeys.add(b.key);
+        if (b.placeholder) seedFor.set(b.key, b.placeholder);
+      }
       if (b.type === 'buttons') {
         for (const item of b.items ?? []) {
           for (const a of item.actions ?? []) {
@@ -501,7 +505,7 @@ export function generateCode(
     });
     const stateKeys = [...new Set([...readKeys, ...writeKeys])];
     const stateLines = stateKeys.map((k) =>
-      `  const [${varName(k)}, set${varName(k).replace(/^./, (c) => c.toUpperCase())}] = useState('');`);
+      `  const [${varName(k)}, set${varName(k).replace(/^./, (c) => c.toUpperCase())}] = useState(${JSON.stringify(seedFor.get(k) ?? '')});`);
 
     const chrome = project.header?.show !== false || project.footer?.show !== false;
     // usesNav is set while building handlers, which happens below — recomputed there.

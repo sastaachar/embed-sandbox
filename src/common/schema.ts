@@ -110,7 +110,7 @@ export type Block = Styled &
   (
   | { type: 'heading'; text: string; level?: 1 | 2 | 3 }
   | { type: 'text'; text: string }
-  | { type: 'value'; key: string; label?: string }
+  | { type: 'value'; key: string; label?: string; placeholder?: string }
   | { type: 'spacer'; size?: string }
   | { type: 'divider' }
   | { type: 'buttons'; align?: 'left' | 'center' | 'right'; items: ButtonSpec[] }
@@ -925,6 +925,7 @@ function validateBlockBody(raw: Record<string, unknown>, field: string, depth = 
         type: 'value',
         key: valuePath(raw.key, `${field}.key`),
         label: optStr(raw.label, `${field}.label`, 200),
+        placeholder: optStr(raw.placeholder, `${field}.placeholder`, 200),
       };
     case 'spacer':
       return { type: 'spacer', size: optStr(raw.size, `${field}.size`, 40) };

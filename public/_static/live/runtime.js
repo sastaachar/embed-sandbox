@@ -91,7 +91,7 @@
     textBindings.forEach(function (b) { b.node.textContent = interpolate(b.tpl); });
     valueBindings.forEach(function (b) {
       var v = lookup(b.key);
-      b.node.textContent = v === undefined ? '—' : display(v);
+      b.node.textContent = v === undefined ? (b.placeholder || '—') : display(v);
     });
   }
 
@@ -376,7 +376,7 @@
           var vrow = el('div', 'sb-value');
           if (block.label) vrow.appendChild(el('span', 'sb-value-label', block.label));
           var out = el('span', 'sb-value-out');
-          valueBindings.push({ node: out, key: block.key });
+          valueBindings.push({ node: out, key: block.key, placeholder: block.placeholder });
           vrow.appendChild(out);
           container.appendChild(styled(vrow, block));
           break;
