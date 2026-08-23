@@ -496,3 +496,23 @@ textarea.mono {
   border-radius: 999px; background: var(--accent, #7b3fe4); z-index: 0;
   transition: transform .18s ease;
 }
+
+/* ---- the page tree in the left nav ---- */
+#pageTree { margin-bottom: 16px; }
+.pt-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.pt-head h2 { margin: 0; }
+.pt-head #newPage { width: auto; margin: 0; padding: 1px 9px; font-size: 14px; line-height: 1.5; border-radius: 7px; }
+.pt-row { display: flex; align-items: center; gap: 2px; min-width: 0; }
+.pt-row .pt-open {
+  flex: 1 1 auto; width: auto; min-width: 0; margin-bottom: 2px; padding: 4px 8px;
+  font-size: 12.5px; border: 1px solid transparent; background: none; text-align: left;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.pt-row .pt-open:hover { background: var(--accent-soft, rgba(123,63,228,.12)); }
+.pt-row.on .pt-open { background: var(--accent-soft, rgba(123,63,228,.12)); color: var(--accent, #7b3fe4); font-weight: 600; }
+.pt-ghost {
+  flex: 1 1 auto; padding: 4px 8px; font-size: 12.5px; color: var(--muted, #888);
+  opacity: .65; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.pt-del { width: auto; margin: 0 0 2px; padding: 2px 6px; font-size: 11px; border: 0; background: none; color: var(--muted, #888); }
+.pt-del:hover { color: var(--danger, #d33); }

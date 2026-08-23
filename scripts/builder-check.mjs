@@ -409,7 +409,13 @@ await pg.fill('#maskBody input', '/from-builder');
 await pg.locator('#maskBody button', { hasText: 'Create' }).click();
 await pg.waitForFunction(() => (document.getElementById('status')?.textContent || '').includes('created'), { timeout: 10000 });
 ok((await api(`/api/projects/${PID}`)).pages.includes('/from-builder'), 'a page can be created from the builder');
-ok((await pg.locator('#pageSel option').count()) === 2, 'the page selector updates');
+ok((await pg.locator('#pageTree .pt-open').count()) === 2, 'the page tree in the left nav updates');
+ok((await pg.locator('#pageTree .pt-row.on .pt-open').textContent()) === 'from-builder',
+  'the tree highlights the page you are on');
+await pg.locator('#pageTree .pt-open', { hasText: '/' }).first().click();
+await pg.waitForTimeout(400);
+ok((await pg.locator('#pageTree .pt-row.on .pt-open').textContent()) === '/',
+  'clicking a tree node opens that page');
 
 // ---- embeds do not steal clicks while arranging ----
 ok(await pg.evaluate(() => {

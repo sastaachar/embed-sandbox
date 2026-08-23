@@ -10,6 +10,7 @@ import {
   BuildWithAiDialog, ConfirmDialog, ConnectDialog, MetadataPicker, PromptDialog, TypePicker,
 } from './dialogs';
 import { JsonPanel } from './JsonPanel';
+import { PageTree } from './PageTree';
 import { MapPanel } from './MapPanel';
 import { CodePanel } from './CodePanel';
 import * as sdk from './sdk';
@@ -357,15 +358,6 @@ export function App() {
           }}
         />
         <span className="pid" title="Project id">{PID}</span>
-        <select
-          id="pageSel"
-          value={path}
-          onChange={(e) => { b.setPath(e.target.value); setSel(null); sdk.releaseAll(); render(); }}
-        >
-          {pages.map((p) => <option key={p} value={p}>{p}</option>)}
-        </select>
-        <button id="newPage" onClick={() => setDialog({ kind: 'newPage' })}>+ Page</button>
-        <button id="delPage" onClick={() => setDialog({ kind: 'delPage' })}>Delete page</button>
         <button
           id="connect"
           // Colour is the outcome of init(), not the presence of a saved row: nothing
@@ -419,6 +411,13 @@ export function App() {
 
       <div className="panes">
         <section className="pane palette" id="palette">
+          <PageTree
+            paths={pages}
+            current={path}
+            onOpen={(p) => { b.setPath(p); setSel(null); sdk.releaseAll(); render(); }}
+            onNew={() => setDialog({ kind: 'newPage' })}
+            onDelete={() => setDialog({ kind: 'delPage' })}
+          />
           <h2>Add</h2>
           {PALETTE.map((entry) => (
             <button key={entry.label} onClick={() => addBlock(entry)}>+ {entry.label}</button>
