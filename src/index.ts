@@ -23,7 +23,7 @@ import { renderEditor } from './builder/editor';
 import { renderBuilder } from './builder/shell';
 import { renderForkPage } from './builder/fork';
 import { buildOutline } from './common/outline';
-import { handleMcp } from './common/mcp';
+import { handleMcp, manualMarkdown } from './common/mcp';
 import {
   ValidationError,
   normalizePath,
@@ -584,7 +584,7 @@ No build step, no deploy.</p>
     <p>Point your MCP client here and it can build the pages for you:</p>
     <div class="copyrow"><code id="mcp"></code><button data-copy="mcp">Copy</button></div>
     <p style="margin-top:8px">Auth header: <code class="inline">Authorization: Bearer &lt;edit token&gt;</code>.
-    The manual is at <code class="inline">/mcp</code>.</p>
+    The manual is at <code class="inline">/mcp/manual.md</code> — agents should read it once (the <code class="inline">read_manual</code> tool) before anything else.</p>
   </details>
   <div class="mini"><button id="again">← Create another</button></div>
 </section>
@@ -803,10 +803,16 @@ export default {
       }
 
       if (segments[0] === 'mcp') {
-        // /mcp        — added once, every call names its project and token
-        // /mcp/<id>    — pinned to one project, token in the Authorization header
+        // /mcp            — added once, every call names its project and token
+        // /mcp/manual.md  — the manual as a markdown file (also GET /mcp, read_manual)
+        // /mcp/<id>       — pinned to one project, token in the Authorization header
         const projectId = segments[1] || '';
         if (!projectId) return await handleMcp(request, env, null);
+        if (projectId === 'manual.md') {
+          return new Response(manualMarkdown(), {
+            headers: { 'content-type': 'text/markdown; charset=utf-8', 'cache-control': 'no-store' },
+          });
+        }
         if (!PROJECT_ID_RE.test(projectId)) return json({ error: 'malformed project id' }, 400);
         return await handleMcp(request, env, projectId);
       }

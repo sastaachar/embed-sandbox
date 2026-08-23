@@ -115,9 +115,19 @@ INIT=$(curl -sS -X POST "$MCP" -H "authorization: Bearer $TOKEN" -H 'content-typ
 echo "$INIT" | grep -q 'embed-sandbox' && echo "  ok   initialize"
 TOOLS=$(curl -sS -X POST "$MCP" -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
   -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}')
-for T in get_site set_site list_pages get_page set_page delete_page get_config save_config connect_cluster list_metadata; do
-  echo "$TOOLS" | grep -q "\"$T\"" && printf '  ok   tool %s\n' "$T"
+for T in read_manual get_site set_site list_pages get_page set_page delete_page get_config save_config lock_project unlock_project search_metadata create_project get_urls get_graph get_code fork_site; do
+  echo "$TOOLS" | grep -q "\"$T\"" && printf '  ok   tool %s\n' "$T" || printf '  FAIL tool %s missing\n' "$T"
 done
+
+say "6b. the manual is a real file, and a token-free tool"
+MAN=$(curl -sS "$BASE/mcp/manual.md")
+echo "$MAN" | grep -q '# embed-sandbox MCP server' && echo "  ok   /mcp/manual.md serves the manual" || echo "  FAIL /mcp/manual.md"
+echo "$MAN" | grep -q '## When to call what' && echo "  ok   manual carries the when-to-call-what flow" || echo "  FAIL flow section missing"
+echo "$MAN" | grep -q '### lock_project' && echo "  ok   manual carries the generated tool reference" || echo "  FAIL tool reference missing"
+READM=$(curl -sS -X POST "$BASE/mcp" -H 'content-type: application/json' \
+  -d '{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"read_manual","arguments":{}}}')
+echo "$READM" | grep -q 'READ THIS ONCE PER SESSION' && echo "  ok   read_manual returns it without a token" || echo "  FAIL read_manual"
+echo "$INIT" | grep -q 'READ THIS ONCE PER SESSION' && echo "  ok   initialize.instructions says read it first" || echo "  FAIL instructions missing the pointer"
 
 say "7. MCP can edit a page (agent path)"
 curl -sS -X POST "$MCP" -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \

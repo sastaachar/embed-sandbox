@@ -5,7 +5,7 @@
  *
  * Bumped when the bundle changes so a stale copy is never served from cache.
  */
-export const BUILDER_VERSION = '3';
+export const BUILDER_VERSION = '4';
 
 const SORTABLE = 'https://cdn.jsdelivr.net/npm/sortablejs@1.15.7/Sortable.min.js';
 const INTERACT = 'https://cdn.jsdelivr.net/npm/interactjs@1.10.27/dist/interact.min.js';

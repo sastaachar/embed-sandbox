@@ -12,7 +12,14 @@ GET  /p/<projectId>/...       ->  the live site (share this)
 GET  /edit/<projectId>        ->  JSON editor, gated on the edit token
 GET  /fork/<projectId>        ->  "fork this showcase" page, no token needed
 POST /mcp/<projectId>         ->  MCP endpoint an agent edits through
+GET  /mcp/manual.md           ->  the full manual as markdown: document shape,
+                                  when-to-call-what flow, generated tool reference
 ```
+
+Agents are told (in the server instructions, the entry tools, and the
+`read_manual` tool listed first) to read the manual once per session before
+using anything else — the tool reference in it is generated from the live tool
+definitions, so it cannot drift.
 
 ## How it works
 

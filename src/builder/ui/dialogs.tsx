@@ -334,9 +334,11 @@ export function BuildWithAiDialog(props: {
   const mcpUrl = `${location.origin}/mcp`;
   const prompt =
     `Add this MCP server: ${mcpUrl}\n` +
+    `First call read_manual once and follow it (also at ${mcpUrl}/manual.md).\n` +
     `Then build a ThoughtSpot embed demo in project ${props.projectId}.\n` +
     `Pass projectId "${props.projectId}" and token "${props.editToken}" with every call.\n` +
-    `Use search_metadata for real ids, get_config to read, save_config to write.`;
+    `Use search_metadata for real ids, get_config to read, save_config to write,\n` +
+    `and lock_project before editing / unlock_project when done.`;
 
   const copy = (what: string, text: string) => {
     navigator.clipboard.writeText(text).then(

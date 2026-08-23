@@ -143,6 +143,12 @@ embedDefaults is merged underneath every page's embed config.`;
  */
 export const MANUAL = `# embed-sandbox MCP server
 
+READ THIS ONCE PER SESSION BEFORE USING ANY OTHER TOOL. The full manual — this
+document, plus a generated reference for every tool — is the read_manual tool, and is
+also served as markdown at GET /mcp/manual.md. Everything an agent gets wrong when it
+guesses (the document shape, the pre-render contract, the UpdateFilters payload, the
+auth trade-offs) is written down here.
+
 Builds shareable ThoughtSpot embed demo sites. Pages are JSON documents rendered by a
 14KB runtime — you never write HTML or JS. The published site updates live: viewers'
 pages re-render within ~5s of any save, and the visual builder follows along too.
@@ -176,6 +182,23 @@ required for every write; reads are public because sharing is the point.
 
 Small edits: get_page / set_page (replace, not merge). Whole-document edits:
 get_config / save_config. set_site merges config; save_config and set_page replace.
+
+## When to call what
+
+| Situation | Call |
+|---|---|
+| first tool call of the session | read_manual (this document) |
+| starting a brand-new demo | create_project → lock_project → connect a cluster → search_metadata → save_config → get_graph → get_urls → unlock_project |
+| editing an existing demo | get_config → lock_project → save_config → unlock_project |
+| tweaking one page | get_page → set_page (replaces the whole page) |
+| site-wide restyle / rename / SDK pin | set_site (merges, so send only what changes) |
+| you need a liveboard/answer/worksheet id | search_metadata — NEVER guess ids |
+| about to make the first edit of a session | lock_project — viewers see the being-vibe-coded banner |
+| done editing | unlock_project — the banner clears immediately |
+| explaining the config to the human | get_code (real SDK code) or get_urls (links) |
+| checking the site hangs together | get_graph (nav + shared-value edges, dangling links) |
+| the human wants their own copy | fork_site |
+| cluster not connected yet | get_config.connection → send the human the connect link |
 
 ## The document
 
@@ -308,6 +331,17 @@ get_code (path, flavor react|esm|cdn — real SDK code, PreRendered components i
 
 const TOOLS = [
   {
+    name: 'read_manual',
+    description:
+      'READ FIRST — call this once per session before any other tool. Returns the complete ' +
+      'manual as markdown: the document shape, every block/action/embed type, the verified ' +
+      'UpdateFilters payload, the pre-render contract, auth trade-offs for a public page, ' +
+      'the edit-lock etiquette, an ideal when-to-call-what flow, and a reference for every ' +
+      'tool generated from these very definitions. No token needed. The same document is ' +
+      'served at GET /mcp/manual.md.',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+  },
+  {
     name: 'get_site',
     description:
       'Read this project\'s site-level config (host, SDK version, theme, header, footer) plus the list of page paths that exist. Call this first to see the current state before changing anything.',
@@ -393,7 +427,7 @@ const TOOLS = [
   {
     name: 'get_config',
     description:
-      'Read the WHOLE app as one JSON document: site config, every page keyed by path, and the cluster connection (never its secret). This is the same document save_config writes back, so get it, change what you want, and send it back. Prefer this over get_site/get_page when you are making more than one change.',
+      'Read the WHOLE app as one JSON document: site config, every page keyed by path, and the cluster connection (never its secret). This is the same document save_config writes back, so get it, change what you want, and send it back. Prefer this over get_site/get_page when you are making more than one change. If you have not called read_manual yet this session, do that first.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   },
   {
@@ -444,7 +478,7 @@ const TOOLS = [
   {
     name: 'create_project',
     description:
-      'Make a new demo site and return its id, its edit token, and the URLs to open it. The token is shown once and never again — hand it back to the human. No token is needed to call this.',
+      'Make a new demo site and return its id, its edit token, and the URLs to open it. The token is shown once and never again — hand it back to the human. No token is needed to call this. If you have not called read_manual yet this session, do that first.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -491,6 +525,33 @@ const TOOLS = [
     },
   },
 ];
+
+/**
+ * The manual as one markdown file: the hand-written MANUAL plus a tool reference
+ * generated from the live TOOLS array, so the file can never drift from the
+ * definitions an agent actually receives.
+ */
+export function manualMarkdown(): string {
+  const ref = TOOLS.map((t) => {
+    const schema = t.inputSchema as unknown as {
+      properties?: Record<string, { type?: string; description?: string; enum?: string[] }>;
+      required?: string[];
+    };
+    const args = Object.entries(schema.properties ?? {}).map(([key, spec]) => {
+      const req = schema.required?.includes(key) ? ' (required)' : '';
+      const kind = spec.enum ? spec.enum.join(' | ') : spec.type ?? '';
+      return `- \`${key}\`${req}${kind ? ` — ${kind}` : ''}${spec.description ? `. ${spec.description}` : ''}`;
+    });
+    return `### ${t.name}\n\n${t.description}\n${args.length ? `\nArguments:\n\n${args.join('\n')}\n` : '\nNo arguments.\n'}`;
+  }).join('\n');
+  return (
+    `${MANUAL}\n\n## Tool reference\n\n` +
+    'Generated from the live tool definitions, so it cannot drift. Mounted at /mcp ' +
+    '(not pinned to a project), every tool except read_manual and create_project also ' +
+    'takes `projectId` and `token`; at /mcp/<projectId> both are implied.\n\n' +
+    `${ref}`
+  );
+}
 
 interface RpcRequest {
   jsonrpc?: string;
@@ -833,7 +894,7 @@ const SHARED_ARGS = {
 };
 
 /** create_project is the one tool with no project yet, so it never takes those two. */
-const NO_PROJECT = new Set(['create_project']);
+const NO_PROJECT = new Set(['read_manual', 'create_project']);
 
 function toolsFor(pinned: string | null) {
   if (pinned) return TOOLS;
@@ -862,7 +923,8 @@ export async function handleMcp(
 ): Promise<Response> {
   if (request.method === 'GET') {
     // The manual, for a human in a browser or an agent probing before it connects.
-    return new Response(MANUAL, {
+    // Also mounted at /mcp/manual.md, the linkable spelling.
+    return new Response(manualMarkdown(), {
       headers: { 'content-type': 'text/markdown; charset=utf-8', 'cache-control': 'no-store' },
     });
   }
@@ -926,6 +988,11 @@ export async function handleMcp(
     if (method === 'tools/call') {
       const name = String(message.params?.name ?? '');
       const args = (message.params?.arguments as Record<string, unknown>) ?? {};
+      // The manual is public and project-free, like the GET that serves it.
+      if (name === 'read_manual') {
+        responses.push(textResult(id, manualMarkdown()));
+        continue;
+      }
       // Creating a project cannot name one, and there is nothing yet to authorise
       // against — the same as POST /api/projects, which is also unauthenticated.
       if (name === 'create_project') {
