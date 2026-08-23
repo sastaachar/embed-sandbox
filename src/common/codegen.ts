@@ -137,12 +137,12 @@ export function generateCode(
   const authType = project.authType || 'None';
   const version = project.sdkVersion || 'latest';
 
-  if (embeds.length === 0) {
-    return `// ${path} has no embed block yet — add one and this becomes real SDK code.`;
-  }
+  // A page with no embed block still generates: the React flavour emits the whole
+  // page, cdn a standalone page without the SDK, esm the app-level init and a note.
+  const hasEmbeds = embeds.length > 0;
 
   const classes = [...new Set(embeds.map((e) => CLASS_FOR[e.type]))];
-  const needsHostEvent = hostEventButtons.length > 0;
+  const needsHostEvent = hostEventButtons.length > 0 && hasEmbeds;
   const initImports = ['init', 'AuthType'];
   const pageImports = [...classes, ...(needsHostEvent ? ['HostEvent'] : [])];
   const imports = [...initImports, ...pageImports];
@@ -182,8 +182,17 @@ export function generateCode(
 
   // The site-wide defaults once, not per instance — the theme blob would otherwise
   // repeat for every embed and bury the two lines that matter.
+  if (!hasEmbeds) {
+    lines.push(`// ${path} has no embed block yet — nothing here for the SDK to do.`);
+    lines.push(`// Add an embed block and its constructor code appears in this spot.`);
+    if (hostEventButtons.length) {
+      lines.push(`// (This page has HostEvent buttons, but no embed for them to drive.)`);
+    }
+    lines.push('');
+  }
+
   const sharedDefaults = project.embedDefaults ?? {};
-  const hasSharedDefaults = Object.keys(sharedDefaults).length > 0;
+  const hasSharedDefaults = Object.keys(sharedDefaults).length > 0 && hasEmbeds;
   if (hasSharedDefaults) {
     lines.push(`// Applied to every embed on the site — theme and customisations.`);
     lines.push(`const embedDefaults = ${literal(sharedDefaults, 0)};`);
@@ -231,7 +240,7 @@ export function generateCode(
   });
 
   // ---- buttons -> host events ----
-  if (hostEventButtons.length) {
+  if (hostEventButtons.length && hasEmbeds) {
     lines.push(`// Buttons act on embed index 0 unless the action sets "targets".`);
     hostEventButtons.forEach((btn, i) => {
       const act = (btn.actions ?? []).find((a) => a.type === 'HostEvent');
@@ -290,6 +299,9 @@ export function generateCode(
       const pr = a.params;
       switch (a.type) {
         case 'HostEvent': {
+          if (!visible.length) {
+            return `console.warn('HostEvent.${pr.type} needs an embed block on this page');`;
+          }
           const payload = pr.payload === undefined ? '' : `, ${literal(pr.payload, 4)}`;
           const targets = refsForTargets(pr.targets);
           // A store key means the event ANSWERS (GetFilters, GetParameters…): the
@@ -545,7 +557,10 @@ export function generateCode(
       initBody,
       '',
       `// ─── ${path} ───`,
-      `import { ${[...reactImports, ...preRenderImports].join(', ')}${needsHostEvent ? `, HostEvent` : ''} } from '${pkg}';`,
+      ...(hasEmbeds
+        ? [`import { ${[...reactImports, ...preRenderImports].join(', ')}${needsHostEvent ? `, HostEvent` : ''} } from '${pkg}';`]
+        : [`// No embed block on this page yet — plain React. Add one and its`,
+           `// component (and the matching SDK import) appears here.`]),
       '',
       ...defaultLines,
       '',
@@ -579,7 +594,7 @@ export function generateCode(
       return [
         `// npm install ${pkg}@${version}`,
         `// Assumes init() has already been called once at app bootstrap.`,
-        `import { ${pageImports.join(', ')} } from '${pkg}';`,
+        ...(hasEmbeds ? [`import { ${pageImports.join(', ')} } from '${pkg}';`] : []),
         '',
         `// ${path}`,
         pageBody,
@@ -597,7 +612,7 @@ export function generateCode(
       initBody,
       '',
       `// ─── ${path} ───`,
-      `import { ${pageImports.join(', ')} } from '${pkg}';`,
+      ...(hasEmbeds ? [`import { ${pageImports.join(', ')} } from '${pkg}';`] : []),
       '',
       pageBody,
       '',
@@ -620,6 +635,24 @@ export function generateCode(
         .map((b, i) => `<button id="btn-${i + 1}">${b.label.replace(/[<>&]/g, '')}</button>`)
         .join('\n  ')
     : '';
+
+  if (!hasEmbeds) {
+    // No SDK script, no init: loading a 500 KB SDK for a page with nothing to embed
+    // would be code that lies about what the page needs.
+    return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>${(page.title || path).replace(/[<>&]/g, '')}</title>
+</head>
+<body>${btnHtml}
+  <!-- ${path} has no embed block yet, so nothing on this page needs the SDK.
+       Add an embed block and this becomes a full Visual Embed SDK page. -->
+</body>
+</html>
+`;
+  }
 
   return `<!doctype html>
 <html lang="en">

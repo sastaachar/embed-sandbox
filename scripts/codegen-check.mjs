@@ -108,9 +108,21 @@ ok(two.includes('embed2.trigger'), 'embedIndex:1 targets the second embed in gen
 // ---- theme vars ride along, so code matches what runs ----
 ok(cdn.includes('--ts-var-button--primary-background'), 'generated code carries the derived --ts-var values');
 
-// ---- a page with no embed says so rather than emitting junk ----
+// ---- a page with no embed still yields real code, minus the SDK ----
 const empty = await code('path=/empty');
-ok(empty.includes('no embed block yet'), 'page without an embed returns an explanatory note');
+ok(empty.includes('<!doctype html>'), 'no-embed cdn is still a complete standalone page');
+ok(empty.includes('no embed block yet'), 'and says why no SDK code is in it');
+ok(!empty.includes('init({') && !empty.includes('window.tsembed'),
+  'cdn without an embed neither loads nor inits the SDK');
+const emptyEsm = await code('path=/empty&flavor=esm');
+ok(emptyEsm.includes('init({'), 'no-embed esm keeps the app-level init');
+ok(!/import \{\s*\} from/.test(emptyEsm), 'no-embed esm emits no empty import');
+ok(emptyEsm.includes('no embed block yet'), 'and carries the note');
+const emptyReact = await code('path=/empty&flavor=react');
+ok(/export function \w+\(\)/.test(emptyReact), 'no-embed react still emits the page component');
+ok(emptyReact.includes('nothing to embed'), 'with the page content in its JSX');
+ok(!emptyReact.includes("from '@thoughtspot/visual-embed-sdk/react'"),
+  'and no react-wrapper import it does not use');
 
 // ---- download headers ----
 const dl = await fetch(`${BASE}/api/projects/${PID}/code?path=/lb&download=1`);

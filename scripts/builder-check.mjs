@@ -359,8 +359,10 @@ await pg.waitForTimeout(400);
 ok((await pg.locator('.card').count()) < before, 'Delete removes the selected block');
 
 // ---- JSON opens in place, and carries the full state of the current page ----
-ok(await pg.locator('#json').count() === 1, 'the toolbar has a JSON button, not a link to another tab');
-await pg.click('#json');
+ok(await pg.locator('#viewSlider button').count() === 4,
+  'Build/JSON/Map/Code are one slider control, not four scattered buttons');
+ok((await pg.getAttribute('#view-build', 'aria-pressed')) === 'true', 'the canvas is the resting view');
+await pg.click('#view-json');
 await pg.waitForSelector('#jsonText', { timeout: 5000 });
 ok(await pg.locator('.sheet').count() === 0, 'it replaces the canvas in place rather than opening a tab');
 const shownJson = JSON.parse(await pg.inputValue('#jsonText'));
@@ -379,10 +381,26 @@ await pg.fill('#jsonText', '{ not json');
 await pg.click('#jsonApply');
 ok((await pg.textContent('#jsonErr')).length > 0, 'and a parse error is shown instead of being swallowed');
 await pg.locator('#jsonPane button', { hasText: 'Revert' }).click();
-await pg.click('#json');
+await pg.click('#view-build');
 await pg.waitForTimeout(600);
-ok(await pg.locator('.sheet').count() === 1, 'closing it returns to the canvas');
+ok(await pg.locator('.sheet').count() === 1, 'sliding back to Build returns to the canvas');
 ok((await pg.textContent('.sheet')).includes('added via JSON'), 'and the canvas reflects the JSON edit');
+
+// ---- the slider slides: drag the thumb across the views ----
+{
+  const box = await pg.locator('#viewSlider').boundingBox();
+  const y = box.y + box.height / 2;
+  await pg.mouse.move(box.x + box.width * 0.125, y);
+  await pg.mouse.down();
+  await pg.mouse.move(box.x + box.width * 0.625, y, { steps: 8 });   // over Map
+  const midView = await pg.locator('#viewSlider button.on').textContent();
+  await pg.mouse.move(box.x + box.width * 0.375, y, { steps: 8 });   // back to JSON
+  await pg.mouse.up();
+  ok(midView === 'Map', `dragging the thumb shifts the view live (mid-drag was ${midView})`);
+  ok(await pg.isVisible('#jsonText'), 'and releasing over JSON lands on the JSON view');
+  await pg.click('#view-build');
+  await pg.waitForTimeout(300);
+}
 
 // ---- pages ----
 await pg.click('#newPage');

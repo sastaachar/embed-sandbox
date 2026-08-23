@@ -55,12 +55,11 @@ export function App() {
   // tree something else has edited. The iframes survive: they live in the SDK's
   // body-level pre-render wrappers, not in the hosts being rebuilt.
   const [canvasEpoch, setCanvasEpoch] = useState(0);
-  const [showJson, setShowJson] = useState(false);
-  const [showMap, setShowMap] = useState(false);
+  // Build, JSON, Map and Code are four states of the same document — one control.
+  const [view, setView] = useState<BuilderView>('build');
   // The advisory agent lock: warn, never block — Edit anyway stands until the lock clears.
   const [agentLock, setAgentLock] = useState<EditLock | null>(null);
   const [lockDismissed, setLockDismissed] = useState(false);
-  const [showCode, setShowCode] = useState(false);
   // null until init() reports: AuthStatus.SUCCESS -> 'ok', any other status -> 'bad'.
   const [authState, setAuthState] = useState<'ok' | 'bad' | null>(null);
   // Bumped whenever this tab's cluster credential changes, so init() is rebuilt: the
@@ -68,6 +67,14 @@ export function App() {
   const [connectEpoch, setConnectEpoch] = useState(0);
   // Bumped on every edit so the JSON view re-reads instead of showing a stale snapshot.
   const [docEpoch, setDocEpoch] = useState(0);
+
+  // JSON re-reads the document on entry so it is never a stale snapshot.
+  const switchView = useCallback((next: BuilderView) => {
+    setView((prev) => {
+      if (next === 'json' && prev !== 'json') setDocEpoch((n) => n + 1);
+      return next;
+    });
+  }, []);
   const b = useBuilder();
   const { doc, page, path, sel, setSel, setStatus, touched, render } = b;
 
@@ -378,22 +385,7 @@ export function App() {
         >
           {authState === 'ok' ? '✓ Connected' : 'Connect'}
         </button>
-        <button
-          id="code"
-          aria-pressed={showCode}
-          title="This page as SDK code you could paste into your own app"
-          onClick={() => { setShowCode((v) => !v); setShowMap(false); setShowJson(false); }}
-        >
-          Code
-        </button>
-        <button
-          id="map"
-          aria-pressed={showMap}
-          title="Every page, and how they reach each other"
-          onClick={() => { setShowMap((v) => !v); setShowJson(false); setShowCode(false); }}
-        >
-          Map
-        </button>
+        <ViewSlider view={view} onChange={switchView} />
         <button
           id="buildAi"
           title="Point an agent at this project over MCP"
@@ -421,15 +413,6 @@ export function App() {
         >
           Forget token
         </button>
-        <button
-          id="json"
-          aria-pressed={showJson}
-          className={showJson ? 'linked' : ''}
-          title="Edit this page as JSON, right here"
-          onClick={() => { setDocEpoch((n) => n + 1); setShowJson((v) => !v); }}
-        >
-          JSON
-        </button>
         <span id="status" className={b.status.kind}>{b.status.text}</span>
         <button id="save" className="primary" onClick={() => void save()}>Save</button>
       </header>
@@ -442,20 +425,20 @@ export function App() {
           ))}
         </section>
 
-        {showCode ? (
-          <CodePanel path={path} onClose={() => setShowCode(false)} />
-        ) : showMap ? (
+        {view === 'code' ? (
+          <CodePanel path={path} onClose={() => switchView('build')} />
+        ) : view === 'map' ? (
           <MapPanel
-            onClose={() => setShowMap(false)}
-            onOpenPage={(p) => { setShowMap(false); b.setPath(p); setSel(null); render(); }}
+            onClose={() => switchView('build')}
+            onOpenPage={(p) => { switchView('build'); b.setPath(p); setSel(null); render(); }}
           />
-        ) : showJson ? (
+        ) : view === 'json' ? (
           <JsonPanel
             doc={d}
             path={path}
             page={current}
             dirtyKey={docEpoch}
-            onClose={() => setShowJson(false)}
+            onClose={() => switchView('build')}
             onApply={async (scope, parsed) => {
               if (scope === 'page') {
                 if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
@@ -704,6 +687,59 @@ function Gate({ onOpen }: { onOpen: (token: string, remember: boolean) => Promis
         </div>
         <p className="gate-err" id="gateErr">{err}</p>
       </form>
+    </div>
+  );
+}
+
+type BuilderView = 'build' | 'json' | 'map' | 'code';
+
+const VIEWS: Array<{ id: BuilderView; label: string; title: string }> = [
+  { id: 'build', label: 'Build', title: 'The canvas — arrange blocks, live embeds' },
+  { id: 'json', label: 'JSON', title: 'The same page as an editable document' },
+  { id: 'map', label: 'Map', title: 'Every page, and how they reach each other' },
+  { id: 'code', label: 'Code', title: 'The same page as SDK code for your own app' },
+];
+
+/**
+ * Build, JSON, Map and Code are four views of one document, so they are one control:
+ * a segmented slider. Click a segment, or drag the thumb — the view follows the
+ * pointer live while sliding.
+ */
+function ViewSlider({ view, onChange }: { view: BuilderView; onChange: (v: BuilderView) => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const idx = Math.max(0, VIEWS.findIndex((v) => v.id === view));
+  const pick = (clientX: number) => {
+    const el = ref.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const i = Math.min(VIEWS.length - 1, Math.max(0, Math.floor(((clientX - r.left) / r.width) * VIEWS.length)));
+    if (VIEWS[i].id !== view) onChange(VIEWS[i].id);
+  };
+  return (
+    <div
+      className="viewslider"
+      id="viewSlider"
+      ref={ref}
+      onPointerDown={(e) => {
+        e.currentTarget.setPointerCapture(e.pointerId);
+        pick(e.clientX);
+      }}
+      onPointerMove={(e) => { if (e.buttons & 1) pick(e.clientX); }}
+    >
+      <span className="vs-thumb" style={{ transform: `translateX(${idx * 100}%)` }} aria-hidden />
+      {VIEWS.map((v) => (
+        <button
+          key={v.id}
+          id={`view-${v.id}`}
+          type="button"
+          className={view === v.id ? 'on' : ''}
+          aria-pressed={view === v.id}
+          title={v.title}
+          onClick={() => onChange(v.id)}
+        >
+          {v.label}
+        </button>
+      ))}
     </div>
   );
 }
