@@ -172,12 +172,12 @@ export function ConnectDialog(props: {
 
   return (
     <Modal onClose={props.onClose}>
-      <h3>{conn ? 'init()' : 'init() — connect a cluster'}</h3>
+      <h3>{conn ? 'Connect' : 'Connect a cluster'}</h3>
       <p className="dlg-note">
-        Saved as soon as you click Connect. This host becomes the demo{'’'}s ThoughtSpot host as
-        well, so changing it repoints the embeds. Auth type is what the demo passes to the SDK{'’'}s
-        init(); the username and secret below are only used to log in from this tab. The secret is
-        stored server-side and is never returned to the browser.
+        Saved as soon as you click Connect. These details drive the SDK{'’'}s init(): the host
+        becomes the demo{'’'}s ThoughtSpot host (changing it repoints the embeds) and the auth type
+        is what init() runs with. The username and secret are used to log in from this tab so
+        objects can be listed; the secret is stored server-side and is never returned to the browser.
       </p>
       <Field label="Cluster host">
         <input value={host} placeholder="https://acme.thoughtspot.cloud"

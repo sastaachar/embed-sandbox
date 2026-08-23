@@ -315,12 +315,12 @@ ok(login && login.body.password === 'letmein' && login.body.validity_time_in_sec
   'sending the credential straight to the cluster, with a short validity');
 const initBtn = await pg.textContent('#connect');
 const initCls = await pg.getAttribute('#connect', 'class');
-ok(initBtn.includes('Init'), `the toolbar button is the init() one (${initBtn.trim()})`);
+ok(initBtn.includes('Connect'), `the toolbar button is the init() one, named Connect (${initBtn.trim()})`);
 ok(!initBtn.includes('demo_user'), 'and it does not put the username in the label');
 const initTitle = (await pg.getAttribute('#connect', 'title')) || '';
 ok(initTitle.includes('demo_user'), `who it connected as belongs in the tooltip (${initTitle})`);
 ok(initCls !== 'linked', `no green without AuthStatus.SUCCESS against a stub cluster (${initCls})`);
-ok(initBtn.trim() === 'Init', 'and no tick either');
+ok(initBtn.trim() === 'Connect', 'and no tick either');
 
 await pg.locator('.embed-head').first().click();
 await pg.waitForTimeout(300);

@@ -87,14 +87,27 @@ ok(!JSON.stringify((await doc()).body).includes('letmein'),
 ok(!(await fetch(`${BASE}/p/${PID}/`).then(r => r.text())).includes('letmein'),
   'nor in the rendered page, which is public');
 
-for (const [path, method] of [['connection', 'POST'], ['token', 'POST'], ['metadata', 'GET']]) {
+for (const [path, method] of [['token', 'POST'], ['metadata', 'GET']]) {
   const res = await fetch(`${BASE}/api/projects/${PID}/${path}`, {
     method,
     headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' },
     body: method === 'POST' ? '{}' : undefined,
   });
-  ok(res.status === 404, `/${path} is gone — the backend does not do auth (${res.status})`);
+  ok(res.status === 404, `/${path} is gone — the backend does not mint tokens or proxy metadata (${res.status})`);
 }
+
+// /connection is back for the standalone connect page: GET/PUT only, token-gated,
+// secret write-only. It stores a design-time credential server-side; it never mints.
+ok((await fetch(`${BASE}/api/projects/${PID}/connection`, {
+  method: 'POST', headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' }, body: '{}',
+})).status === 405, '/connection accepts only GET and PUT');
+ok((await fetch(`${BASE}/api/projects/${PID}/connection`)).status === 401,
+  '/connection GET requires the edit token');
+const connBody = await fetch(`${BASE}/api/projects/${PID}/connection`, {
+  headers: { authorization: `Bearer ${TOKEN}` },
+}).then((r) => r.text());
+ok(!connBody.includes('letmein') && !JSON.parse(connBody).secret,
+  '/connection GET never returns a secret');
 
 // ---- shape errors are explained ----
 ok((await put({ pages: [] })).status === 400, 'pages must be an object, not an array');

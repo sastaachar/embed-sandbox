@@ -345,16 +345,16 @@ export function App() {
           className={!initFilled ? '' : authState === 'ok' ? 'linked' : authState === 'bad' ? 'failed' : 'filled'}
           title={
             !initFilled
-              ? 'Set the host and auth the SDK inits with, and log in so objects can be listed'
+              ? 'Connect a cluster: the host + auth here are what the SDK init()s with, and the login lists your objects'
               : authState === 'ok'
-                ? `init() authenticated against ${initHost}${initAs}`
+                ? `Connected — init() authenticated against ${initHost}${initAs}`
                 : authState === 'bad'
                   ? `init() did not authenticate against ${initHost}${initAs} — see the status line`
-                  : `init() configured for ${initHost}${initAs} — no AuthStatus reported yet`
+                  : `Connected to ${initHost}${initAs} — init() configured, no AuthStatus reported yet`
           }
           onClick={() => setDialog({ kind: 'connect' })}
         >
-          {authState === 'ok' ? '✓ Init' : 'Init'}
+          {authState === 'ok' ? '✓ Connected' : 'Connect'}
         </button>
         <button
           id="code"

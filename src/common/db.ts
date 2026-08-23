@@ -17,6 +17,8 @@ export interface Connection {
   username: string;
   secretType: 'password' | 'secret_key';
   verifiedAt: number | null;
+  /** True when a secret is stored server-side; the secret itself is never returned here. */
+  hasSecret: boolean;
 }
 
 export interface Project {
@@ -25,6 +27,8 @@ export interface Project {
   createdAt: number;
   updatedAt: number;
   forkedFrom: string | null;
+  /** Server-only cluster connection (never shipped to the page). null if none set. */
+  connection: Connection | null;
 }
 
 export interface Page {
@@ -79,7 +83,7 @@ export async function createProject(
   ]);
 
   return {
-    project: { id, config: merged, createdAt: now, updatedAt: now, forkedFrom: null },
+    project: { id, config: merged, createdAt: now, updatedAt: now, forkedFrom: null, connection: null },
     token,
   };
 }
@@ -89,7 +93,8 @@ export async function getProject(env: Env, id: string): Promise<Project | null> 
   // responses and the page manifest. Reading the secret has its own function.
   const row = await env.DB.prepare(
     `SELECT id, config, created_at, updated_at, forked_from,
-            conn_host, conn_username, conn_secret_type, conn_verified_at
+            conn_host, conn_username, conn_secret_type, conn_verified_at,
+            conn_secret IS NOT NULL AS has_secret
      FROM projects WHERE id = ?`,
   )
     .bind(id)
@@ -103,14 +108,62 @@ export async function getProject(env: Env, id: string): Promise<Project | null> 
       conn_username: string | null;
       conn_secret_type: string | null;
       conn_verified_at: number | null;
+      has_secret: number;
     }>();
   if (!row) return null;
+  const connection: Connection | null = row.conn_host
+    ? {
+        host: row.conn_host,
+        username: row.conn_username ?? '',
+        secretType: row.conn_secret_type === 'secret_key' ? 'secret_key' : 'password',
+        verifiedAt: row.conn_verified_at ?? null,
+        hasSecret: !!row.has_secret,
+      }
+    : null;
   return {
     id: row.id,
     config: normalizeStoredProject(JSON.parse(row.config) as ProjectConfig),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     forkedFrom: row.forked_from ?? null,
+    connection,
+  };
+}
+
+/**
+ * Writes the design-time cluster connection: host, username and the secret, server-side
+ * only. The secret is stored here and NEVER echoed back to a client or shipped in the
+ * page — search_metadata and the builder read it through getConnectionSecret.
+ */
+export async function setConnection(
+  env: Env,
+  projectId: string,
+  conn: { host: string; username: string; secret: string; secretType: 'password' | 'secret_key' },
+): Promise<void> {
+  await env.DB.prepare(
+    `UPDATE projects SET conn_host = ?, conn_username = ?, conn_secret = ?,
+            conn_secret_type = ?, conn_verified_at = ? WHERE id = ?`,
+  )
+    .bind(conn.host, conn.username, conn.secret, conn.secretType, Date.now(), projectId)
+    .run();
+}
+
+/** The one place the connection secret is read, for a server-side token mint. */
+export async function getConnectionSecret(
+  env: Env,
+  projectId: string,
+): Promise<{ host: string; username: string; secret: string; secretType: 'password' | 'secret_key' } | null> {
+  const row = await env.DB.prepare(
+    'SELECT conn_host, conn_username, conn_secret, conn_secret_type FROM projects WHERE id = ?',
+  )
+    .bind(projectId)
+    .first<{ conn_host: string | null; conn_username: string | null; conn_secret: string | null; conn_secret_type: string | null }>();
+  if (!row || !row.conn_host || !row.conn_secret) return null;
+  return {
+    host: row.conn_host,
+    username: row.conn_username ?? '',
+    secret: row.conn_secret,
+    secretType: row.conn_secret_type === 'secret_key' ? 'secret_key' : 'password',
   };
 }
 
@@ -151,7 +204,7 @@ export async function forkProject(
 
   // The fork deliberately gets no connection: credentials are not copyable.
   return {
-    project: { id, config, createdAt: now, updatedAt: now, forkedFrom: sourceId },
+    project: { id, config, createdAt: now, updatedAt: now, forkedFrom: sourceId, connection: null },
     token,
     copiedPages: pages.length,
   };
