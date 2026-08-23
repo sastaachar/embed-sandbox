@@ -123,6 +123,40 @@ ok(/export function \w+\(\)/.test(emptyReact), 'no-embed react still emits the p
 ok(emptyReact.includes('nothing to embed'), 'with the page content in its JSX');
 ok(!emptyReact.includes("from '@thoughtspot/visual-embed-sdk/react'"),
   'and no react-wrapper import it does not use');
+ok(!emptyReact.includes('embedDefaults'),
+  'no-embed react drops embedDefaults — nothing exists to spread them into');
+
+// ---- trusted auth: init() must carry a getAuthToken, or the SDK refuses it ----
+const mk = async (authBlock) => {
+  const p = await api('/api/projects', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      name: 'codegen-auth', thoughtSpotHost: 'https://acme.thoughtspot.cloud',
+      sdkVersion: '1.51.0', authType: 'TrustedAuthTokenCookieless',
+      ...(authBlock ? { auth: authBlock } : {}),
+    }),
+  });
+  await fetch(`${BASE}/api/projects/${p.projectId}/pages`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${p.editToken}` },
+    body: JSON.stringify({ path: '/', page: { blocks: [
+      { type: 'embed', embed: { type: 'liveboard', config: { liveboardId: 'lb-1' } } }] } }),
+  });
+  return api(`/api/projects/${p.projectId}/code?path=/&flavor=esm`).then((r) => r.code || '');
+};
+const credCode = await mk({ tokenSource: 'credentials', username: 'demo', secret: 's3cret', secretType: 'password' });
+ok(credCode.includes('getAuthToken:'), 'trusted auth + credentials: init() carries getAuthToken');
+ok(credCode.includes('/api/rest/2.0/auth/token/full') && credCode.includes('"username":"demo"'),
+  'and it mints from the cluster the way the runtime does');
+ok(credCode.includes('VISIBLE in this file'), 'with the public-secret trade-off stated');
+const bareCode = await mk(null);
+ok(bareCode.includes('getAuthToken:') && bareCode.includes('REQUIRED for AuthType.TrustedAuthTokenCookieless'),
+  'trusted auth with no token source: a stub getAuthToken that names the requirement');
+const ep = await mk({ tokenSource: 'endpoint', tokenEndpoint: 'https://api.acme.com/ts-token', tokenField: 'data.token' });
+ok(ep.includes('fetch("https://api.acme.com/ts-token")') && ep.includes('b.data.token'),
+  'endpoint source: the generated fetch hits the service and reads the token field');
+const ssoCode = await code('path=/lb&flavor=esm');
+ok(!ssoCode.includes('getAuthToken'), 'EmbeddedSSO init() stays clean — no token, nothing to fetch');
 
 // ---- download headers ----
 const dl = await fetch(`${BASE}/api/projects/${PID}/code?path=/lb&download=1`);

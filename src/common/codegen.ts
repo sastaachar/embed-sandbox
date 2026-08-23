@@ -149,10 +149,56 @@ export function generateCode(
 
   // init() is global to the app, not to a page. Kept separate so the esm flavour
   // can place it at bootstrap and the per-page snippet can omit it entirely.
+  // The trusted-auth types refuse to init without a getAuthToken, so the generated
+  // code carries the same one the runtime builds from the declarative `auth` block.
+  const tokenAuth = authType === 'TrustedAuthTokenCookieless' || authType === 'TrustedAuthToken';
+  const auth = project.auth as Record<string, any> | undefined;
+  const getAuthTokenLines = (() => {
+    if (!tokenAuth) return [];
+    if (auth?.tokenSource === 'credentials') {
+      const mintBody: Record<string, unknown> = {
+        username: auth.username,
+        validity_time_in_sec: auth.validitySeconds ?? 300,
+      };
+      mintBody[auth.secretType === 'secret_key' ? 'secret_key' : 'password'] = auth.secret;
+      if (auth.objectId) mintBody.object_id = auth.objectId;
+      const mintUrl = host.replace(/\/+$/, '') +
+        (auth.objectId ? '/api/rest/2.0/auth/token/object' : '/api/rest/2.0/auth/token/full');
+      return [
+        `  // AuthType.${authType} needs a fresh token per session. This mints straight`,
+        `  // from the cluster with credentials VISIBLE in this file — the demo trade-off.`,
+        `  // In production this fetch goes to your own token service instead.`,
+        `  getAuthToken: () =>`,
+        `    fetch(${JSON.stringify(mintUrl)}, {`,
+        `      method: "POST",`,
+        `      headers: { "content-type": "application/json" },`,
+        `      body: JSON.stringify(${JSON.stringify(mintBody)}),`,
+        `    }).then((r) => r.json()).then((b) => b.token),`,
+      ];
+    }
+    if (auth?.tokenSource === 'endpoint') {
+      const opts = auth.tokenMethod && auth.tokenMethod !== 'GET'
+        ? `, { method: ${JSON.stringify(auth.tokenMethod)} }`
+        : '';
+      const read = auth.tokenField
+        ? `.then((r) => r.json()).then((b) => b.${auth.tokenField})`
+        : `.then((r) => r.text())`;
+      return [
+        `  // AuthType.${authType} needs a fresh token per session, from your service:`,
+        `  getAuthToken: () => fetch(${JSON.stringify(auth.tokenEndpoint)}${opts})${read},`,
+      ];
+    }
+    return [
+      `  // REQUIRED for AuthType.${authType} — the SDK refuses to init without it.`,
+      `  // Return a fresh token for the embed user from YOUR backend:`,
+      `  getAuthToken: () => fetch("/your-token-service").then((r) => r.text()),`,
+    ];
+  })();
   const initLines = [
     `init({`,
     `  thoughtSpotHost: ${JSON.stringify(host)},`,
     `  authType: AuthType.${authType},`,
+    ...getAuthTokenLines,
     `});`,
   ];
 
@@ -480,7 +526,8 @@ export function generateCode(
       : [];
 
     const defaults = project.embedDefaults ?? {};
-    const hasDefaults = Object.keys(defaults).length > 0;
+    // Defaults exist to spread into embeds; a page without one has no use for them.
+    const hasDefaults = Object.keys(defaults).length > 0 && hasEmbeds;
     const defaultLines = hasDefaults
       ? ['', `// Applied to every embed on the site — theme and customisations.`,
          `const embedDefaults = ${literal(defaults, 0)};`]
