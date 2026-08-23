@@ -5,8 +5,9 @@ import { CommitInput, Field } from './Modal';
 /*
  * One editor for the one action vocabulary, used by buttons and by embed event handlers.
  * The difference between them is a single field: a `set` on a button writes the literal
- * you type, while a `set` in a handler reads a path out of the event payload — so the
- * field is labelled for what it actually does in each place.
+ * you type, while a `set` in a handler reads a path out of the event payload — or, when
+ * its source is "literal", writes an exact value. The field is labelled for what it
+ * actually does in each place.
  */
 
 export type ActionContext = 'button' | 'event';
@@ -179,13 +180,36 @@ function ActionRow(props: {
             />
           </Field>
           {context === 'event' ? (
-            <Field label="From payload">
-              <input
-                value={String(p.value ?? '')}
-                placeholder="payload.data.id — blank for the whole payload"
-                onChange={(e) => set({ value: e.target.value })}
-              />
-            </Field>
+            <>
+              <Field label="Source">
+                <select
+                  value={'literal' in p ? 'literal' : 'payload'}
+                  onChange={(e) => {
+                    if (e.target.value === 'literal') set({ literal: '', value: undefined });
+                    else set({ value: '', literal: undefined });
+                  }}
+                >
+                  <option value="payload">From the event payload</option>
+                  <option value="literal">A literal value</option>
+                </select>
+              </Field>
+              {'literal' in p ? (
+                <JsonField
+                  label="Value"
+                  value={p.literal}
+                  hint='Written as given when the event fires — e.g. "Liveboard is loaded".'
+                  onCommit={(v) => set({ literal: v === undefined ? '' : v })}
+                />
+              ) : (
+                <Field label="From payload">
+                  <input
+                    value={String(p.value ?? '')}
+                    placeholder="payload.data.id — blank for the whole payload"
+                    onChange={(e) => set({ value: e.target.value })}
+                  />
+                </Field>
+              )}
+            </>
           ) : (
             <JsonField label="Value" value={p.value} hint="A literal: a string, number, or JSON."
               onCommit={(v) => set({ value: v })} />

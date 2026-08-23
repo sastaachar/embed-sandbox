@@ -463,9 +463,16 @@ function payloadPath(v: unknown, field: string): string {
   return raw === 'payload' ? '' : raw.replace(/^payload\./, '');
 }
 
+/** In a handler, `value` must be a string path — so `{ literal: … }` is unambiguous. */
+function isLiteralWrapper(v: unknown): boolean {
+  return !!v && typeof v === 'object' && !Array.isArray(v)
+    && 'literal' in (v as Record<string, unknown>);
+}
+
 /**
  * `inEvent` is the one semantic difference: a set inside an event handler reads a path
- * out of the payload, while a set on a button writes the literal it was given.
+ * out of the payload — unless it carries `literal`, which writes that exact value. A
+ * set on a button always writes the literal it was given.
  */
 function validateAction(v: unknown, field: string, inEvent: boolean): EmbedAction {
   const raw = plainObject(v, field);
@@ -479,9 +486,15 @@ function validateAction(v: unknown, field: string, inEvent: boolean): EmbedActio
 
   if (type === 'set') {
     out.key = valueKey(params.key, `${field}.params.key`);
-    out.value = inEvent
-      ? payloadPath(params.value === undefined ? 'payload' : params.value, `${field}.params.value`)
-      : params.value;
+    if (!inEvent) {
+      out.value = params.literal !== undefined ? params.literal : params.value;
+    } else if (params.literal !== undefined) {
+      out.literal = params.literal;
+    } else if (isLiteralWrapper(params.value)) {
+      out.literal = (params.value as Record<string, unknown>).literal;
+    } else {
+      out.value = payloadPath(params.value === undefined ? 'payload' : params.value, `${field}.params.value`);
+    }
   } else if (type === 'open-modal' || type === 'close-modal') {
     if (params.name !== undefined) out.name = modalName(params.name, `${field}.params.name`);
     else if (type === 'open-modal') fail(`${field}.params.name is required`);

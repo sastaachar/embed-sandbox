@@ -70,19 +70,26 @@ function actionSource(a: EmbedAction): string {
     case 'set': {
       // The value path is left verbatim: a wrong path should read wrong here rather
       // than be tidied into something plausible that never resolves.
-      const from = p.value ? `payload.${p.value}` : 'payload';
+      const from = 'literal' in p
+        ? JSON.stringify(p.literal)
+        : p.value ? `payload.${p.value}` : 'payload';
       return `  Ether.setVariable(${JSON.stringify(p.key)}, ${from});`;
     }
     case 'open-modal':
       return `  Ether.openModal(${JSON.stringify(p.name)});`;
     case 'close-modal':
       return `  Ether.closeModal();`;
+    case 'nav':
+      return `  Ether.go(${JSON.stringify(p.to)});`;
+    case 'open-url':
+      return `  window.open(${JSON.stringify(p.url)}, ${JSON.stringify(p.target || '_blank')});`;
     default: {
-      const data = p.data === undefined ? '' : `, ${JSON.stringify(p.data)}`;
+      const payload = p.payload ?? p.data;
+      const data = payload === undefined ? '' : `, ${JSON.stringify(payload)}`;
       const targets = Array.isArray(p.targets) && p.targets.length
         ? p.targets.map((x: string | number) => `embeds[${JSON.stringify(x)}]`).join(', ')
         : 'embed';
-      return `  [${targets}].forEach((e) => e.trigger(HostEvent.${p.hostEvent}${data}));`;
+      return `  [${targets}].forEach((e) => e.trigger(HostEvent.${p.type ?? p.hostEvent}${data}));`;
     }
   }
 }

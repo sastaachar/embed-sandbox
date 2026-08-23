@@ -547,13 +547,28 @@
     var p = action.params || {};
     switch (action.type) {
       case 'set':
-        return store.set(p.key, readPath(payload, p.value));
+        // A literal writes that exact value; otherwise the value is a payload path.
+        return store.set(
+          p.key,
+          Object.prototype.hasOwnProperty.call(p, 'literal') ? p.literal : readPath(payload, p.value),
+        );
       case 'open-modal':
         return openModal(p.name);
       case 'close-modal':
         return closeModal();
+      case 'nav':
+        return go(p.to);
+      case 'open-url':
+        return window.open(p.url, p.target || '_blank', 'noopener,noreferrer');
+      case 'HostEvent':
       case 'host-event':
-        return trigger(p.hostEvent, p.data, p.targets, scope, p.store);
+        return trigger(
+          p.type || p.hostEvent,
+          p.payload !== undefined ? p.payload : p.data,
+          p.targets,
+          scope,
+          p.store,
+        );
       default:
         console.warn('[' + NS + '] unknown action type "' + action.type + '"');
     }

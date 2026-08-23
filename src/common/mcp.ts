@@ -14,6 +14,7 @@ import {
   updateProjectConfig,
   verifyToken,
   type Env,
+  getConnectionSecret,
 } from './db';
 import { STARTER_PAGE } from './schema';
 import type { PageConfig, ProjectConfig } from './schema';
@@ -76,7 +77,9 @@ embed.height / embed.width size the box on the page, not the SDK.
 embed.name is how a host-event action addresses this embed; without one it is its index.
 embed.embedEventHandlers is a list of { type, id?, actions } where type is an EmbedEvent
 name and each action is { type, params }:
-  set          params { key, value }   value is a path into the payload, e.g. "payload.id"
+  set          params { key, value }   value is a path into the payload, e.g. "payload.id";
+               use params { key, literal } to write an exact value instead — e.g.
+               { "key": "status", "literal": "Liveboard is loaded" }
   open-modal   params { name }
   close-modal  params { name? }
   host-event   params { hostEvent, data?, targets? }
@@ -151,7 +154,14 @@ required for every write; reads are public because sharing is the point.
 ## The workflow that works
 
 1. create_project → returns projectId, editToken (SAVE IT — shown once), and every URL.
-2. save_config with config.auth credentials if you have them (see Auth) — then
+2. Connect a cluster — username + password are REQUIRED for search_metadata and anything
+   cluster-backed. Read get_config.connection; if connected is false, ASK THE HUMAN, two
+   ways (both in connectionHelp): (a) send them the connect link
+   connection.connectUrl + "#t=<editToken>" (the token rides in the fragment, never hits
+   the server) — they fill host/username/password/authType there; or (b) they give you the
+   details here and you set_site the auth block. Then call get_config again — connected
+   flips to true. The connect link keeps the credential server-side for every auth type
+   except TrustedAuthTokenCookieless/TrustedAuthToken, where the page must ship it.
 3. search_metadata → real liveboard/answer/worksheet ids, never guess ids.
 4. save_config with the whole document: config + pages keyed by path.
 5. get_graph → check pages connect and nothing dangles. get_code → show the human
@@ -219,7 +229,9 @@ filter-state bugs are reproduced).
   nav         { to }
   open-url    { url, target? }
   set         { key, value } — on a BUTTON value is a literal; in an EVENT HANDLER it
-              is a path into the event payload ("payload.data.id", blank = whole payload)
+              is a path into the event payload ("payload.data.id", blank = whole payload).
+              In an event handler, { key, literal } writes the exact value given instead
+              — the way to flip a status on Load: { key: "status", literal: "Loaded" }
   open-modal  { name } · close-modal { name? }
   HostEvent   { type, payload?, targets?, store? }
     targets: embed names/indices, "all", or omitted = first embed on the page
@@ -236,6 +248,9 @@ embedEventHandlers: [{ type: "Data"|"CustomAction"|any EmbedEvent, id?, actions 
 id filters CustomAction by its callback id. A set action then reads the payload:
   { type: "Data", actions: [{ type: "set", params: { key: "orderId",
     value: "payload.data.id" } }] }
+or writes a literal (a load flag, a status string) with { key, literal }:
+  { type: "Load", actions: [{ type: "set", params: { key: "status",
+    literal: "Liveboard is loaded" } }] }
 Read back anywhere with {{orderId}}, a value block, or window.<namespace>.getVariable().
 
 ## Auth — what a PUBLISHED page can use
@@ -468,6 +483,59 @@ function filterCatalog(cfg: ProjectConfig, type: string, q: string) {
     .filter((i) => (needle ? i.name.toLowerCase().includes(needle) : true));
 }
 
+/**
+ * A non-secret readout of the cluster connection. `connected` means search_metadata can
+ * mint server-side (host + credentials present); the secret itself is never returned.
+ * This is what an agent reads after a human fills the details on the site, to pull them.
+ */
+function connectionStatus(
+  cfg: ProjectConfig,
+  connection: { host: string; username: string; hasSecret: boolean } | null,
+  origin: string,
+  projectId: string,
+) {
+  const auth = cfg.auth;
+  const host = connection?.host || cfg.thoughtSpotHost || null;
+  // A server-side connection works for every auth type; a public credentials block is the
+  // legacy fallback. Either one lets search_metadata mint.
+  const hasServerSecret = !!connection?.hasSecret;
+  const hasPublicSecret = !!(auth && auth.tokenSource === 'credentials' && auth.username && auth.secret);
+  return {
+    connected: hasServerSecret || hasPublicSecret,
+    thoughtSpotHost: host,
+    authType: cfg.authType || null,
+    username: connection?.username || auth?.username || null,
+    credentialStoredServerSide: hasServerSecret,
+    credentialShippedInPage: hasPublicSecret,
+    connectUrl: `${origin}/connect/${projectId}`,
+  };
+}
+
+/**
+ * The two ways a human connects a cluster, handed to the agent so it can relay them. Both
+ * store the credential server-side so search_metadata can mint. For cookieless auth the
+ * credential ALSO ships in the public page (the page mints its own token); for every other
+ * auth type it stays server-side only.
+ */
+function connectionHelp(origin: string, projectId: string) {
+  return {
+    onTheSite:
+      `Send the human this link (append the edit token as a URL fragment, which never ` +
+      `leaves their browser): ${origin}/connect/${projectId}#t=<editToken>. They fill in ` +
+      'the cluster address, username, password and auth type. Then call get_config and ' +
+      'check connection.connected.',
+    hereWithYou:
+      'Or take the cluster address, username and password from the human here and save them ' +
+      'yourself with set_site: { thoughtSpotHost, authType: "TrustedAuthTokenCookieless", ' +
+      'auth: { tokenSource: "credentials", username, secret, secretType: "password" } }. ' +
+      '(This path ships the secret in the public page; the connect link can keep it ' +
+      'server-side for non-cookieless auth types.)',
+    note: 'Username + password are required for search_metadata and any cluster-backed ' +
+      'feature. For auth types other than TrustedAuthTokenCookieless/TrustedAuthToken the ' +
+      'connect link keeps them server-side (not shipped to visitors).',
+  };
+}
+
 async function callTool(
   env: Env,
   projectId: string,
@@ -563,6 +631,10 @@ async function callTool(
         projectId,
         config: project.config,
         pages: Object.fromEntries(pages.map((p) => [p.path, p.config])),
+        // A non-secret readout of the cluster connection, so you can tell whether a human
+        // has filled it in (on the site or via you) and pull what they entered. When
+        // `connected` is false, ask them to connect — see connectionHelp.
+        connection: connectionStatus(project.config, project.connection, origin, projectId),
         updatedAt: project.updatedAt,
       };
     }
@@ -615,16 +687,25 @@ async function callTool(
       const wanted = args.type ? String(args.type).toUpperCase() : 'LIVEBOARD';
       const q = args.q ? String(args.q) : '';
       const auth = cfg.auth;
-      const host = cfg.thoughtSpotHost || '';
+      // Prefer the server-only connection (works for every auth type, and never ships the
+      // secret). Fall back to a public auth.credentials block if that is all there is.
+      const conn = await getConnectionSecret(env, projectId);
+      const mintFrom = conn
+        ? { host: conn.host, username: conn.username, secret: conn.secret, secretType: conn.secretType }
+        : (auth?.tokenSource === 'credentials' && cfg.thoughtSpotHost && auth.username && auth.secret
+            ? { host: cfg.thoughtSpotHost, username: auth.username, secret: auth.secret,
+                secretType: (auth.secretType === 'secret_key' ? 'secret_key' : 'password') as 'password' | 'secret_key' }
+            : null);
+      const host = mintFrom?.host || cfg.thoughtSpotHost || '';
 
-      if (host && auth?.tokenSource === 'credentials' && auth.username && auth.secret) {
+      if (mintFrom) {
         try {
           const token = await mintToken(projectId, {
-            host,
-            username: auth.username,
-            secret: auth.secret,
-            secretType: auth.secretType === 'secret_key' ? 'secret_key' : 'password',
-            validitySeconds: auth.validitySeconds ?? 300,
+            host: mintFrom.host,
+            username: mintFrom.username,
+            secret: mintFrom.secret,
+            secretType: mintFrom.secretType,
+            validitySeconds: auth?.validitySeconds ?? 300,
           });
           const items = await searchMetadata(host, token, wanted, { search: q || undefined });
           return { source: 'cluster', count: items.length, items };
@@ -663,11 +744,10 @@ async function callTool(
         count: cached.length,
         items: cached,
         ...(cached.length ? {} : {
-          note: 'Nothing to search. Either set config.auth via save_config — ' +
-            '{ tokenSource: "credentials", username, secret } — so this server can ask the ' +
-            'cluster itself (note the secret then ships in the public page), or ask the ' +
-            'human to open the builder and press Sync in "Build with AI", which reads the ' +
-            'cluster from their browser. Until then, ask them for the ids.',
+          note: 'No cluster is connected yet, so there is nothing to search. Ask the human ' +
+            'to connect one — see connectionHelp for the two ways — then call get_config ' +
+            'and check connection.connected before retrying. Until then, ask them for the ids.',
+          connectionHelp: connectionHelp(origin, projectId),
         }),
       };
     }

@@ -328,7 +328,10 @@ export function generateCode(
           const pr = a.params as Record<string, any>;
           if (a.type === 'set') {
             const setter = `set${varName(String(pr.key)).replace(/^./, (c) => c.toUpperCase())}`;
-            stmts.push(`${setter}(${pr.value ? `payload.${pr.value}` : 'payload'})`);
+            const arg = 'literal' in pr
+              ? literal(pr.literal, 0)
+              : pr.value ? `payload.${pr.value}` : 'payload';
+            stmts.push(`${setter}(${arg})`);
           } else {
             const s = statementFor(a as any);
             if (s) stmts.push(s.replace(/;$/, ''));

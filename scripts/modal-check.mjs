@@ -72,6 +72,21 @@ ok(await code(`/api/projects/${PID}/pages`, { method: 'PUT', headers: auth,
         ] } } },
     ] } }) }) === 200, 'page with custom-action rule + modal saved');
 
+ok(await code(`/api/projects/${PID}/pages`, { method: 'PUT', headers: auth,
+  body: JSON.stringify({ path: '/lit', page: { title: 'Lit', blocks: [
+    { type: 'value', key: 'status', label: 'Status' },
+    { type: 'embed', embed: { type: 'liveboard', config: { liveboardId: 'lb-2' },
+      embedEventHandlers: [
+        { type: 'Load', actions: [
+          { type: 'set', params: { key: 'status', literal: 'Liveboard is loaded' } },
+          { type: 'set', params: { key: 'statusObj', literal: { done: true, n: 3 } } },
+          { type: 'set', params: { key: 'viaWrapper', value: { literal: 'yes' } } },
+          { type: 'set', params: { key: 'fromPath', value: 'data.vizId' } },
+          { type: 'HostEvent', params: { type: 'Reload' } },
+        ]},
+      ] } },
+  ] } }) }) === 200, 'page with literal-set Load handler saved');
+
 // bad modal reference is refused at save time
 ok(await code(`/api/projects/${PID}/pages`, { method: 'PUT', headers: auth,
   body: JSON.stringify({ path: '/bad', page: { blocks: [
@@ -166,6 +181,36 @@ await pg.evaluate(() => window.Ether.set('answerId', 'sess-99'));
 await waitFnOk(pg, () => document.querySelectorAll('.sb-modal .sb-embed iframe').length === 1,
   { timeout: 20000 }, 'waiting embed mounts itself once the value arrives');
 await pg.evaluate(() => window.Ether.closeModal());
+
+// ---- literal set in an event handler, plus the normalized HostEvent vocabulary ----
+await pg.evaluate(() => window.Ether.go('/lit'));
+await pg.waitForFunction(() => window.Ether.path === '/lit' && window.Ether.embeds().length === 1,
+  { timeout: 20000 });
+await pg.waitForTimeout(1000);
+// Read back in the same evaluate: the embed's real Load event (fired whenever the
+// iframe finishes against the fake cluster) re-runs the handler with a payload that
+// has no data.vizId, so an async read of fromPath races it.
+const lit = await pg.evaluate(() => {
+  const lv = String(window.tsembed.EmbedEvent.Load);
+  const hs = window.__handlers.filter(x => x.ev === lv);
+  hs.forEach(h => { try { h.fn({ data: { vizId: 'viz-7' } }); } catch (e) {} });
+  return {
+    fired: hs.length,
+    status: window.Ether.get('status'),
+    statusObj: JSON.stringify(window.Ether.get('statusObj')),
+    viaWrapper: window.Ether.get('viaWrapper'),
+    fromPath: window.Ether.get('fromPath'),
+  };
+});
+ok(lit.fired > 0, `Load handler invoked (${lit.fired} handler(s))`);
+ok(lit.status === 'Liveboard is loaded', 'handler set wrote the literal string, not a payload lookup');
+ok(lit.statusObj === '{"done":true,"n":3}', 'a literal can be structured, and arrives intact');
+ok(lit.viaWrapper === 'yes', 'value: { literal: … } wrapper form normalizes to a literal');
+ok(lit.fromPath === 'viz-7', 'payload-path set still reads out of the payload beside literals');
+const litValue = await pg.locator('.sb-value-out').first().textContent().catch(() => null);
+ok(litValue === 'Liveboard is loaded', `value block shows the literal (got ${litValue})`);
+ok(warns.every(w => !w.includes('unknown action type')),
+  'HostEvent in a handler runs the normalized vocabulary — no "unknown action type" warning');
 
 // ---- the CORS error surface, on its own project so showEmbedErrors is on ----
 const e2 = await api('/api/projects', {
