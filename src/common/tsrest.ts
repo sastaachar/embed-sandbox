@@ -5,6 +5,8 @@
  * back; that is not a bug to fix here, it is what a Worker at the edge can do.
  */
 
+import { tokenApiMessage } from './tsError';
+
 export type SecretType = 'password' | 'secret_key';
 
 export interface MintOptions {
@@ -43,8 +45,9 @@ async function read(res: Response, what: string): Promise<unknown> {
       : res.status === 404
         ? ' — check the host'
         : '';
+  const nice = tokenApiMessage(detail);
   throw new TsRestError(
-    `${what} failed (${res.status})${hint}${detail ? `: ${detail.slice(0, 200)}` : ''}`,
+    `${what} failed (${res.status})${hint}${nice ? `: ${nice}` : detail ? `: ${detail.slice(0, 200)}` : ''}`,
     res.status,
   );
 }

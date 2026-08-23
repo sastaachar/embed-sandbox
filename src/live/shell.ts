@@ -3,7 +3,7 @@ import type { Theme } from '../common/schema';
 import { resolveTheme } from '../common/theme';
 import { SDK_CDN_ORIGIN, sdkUrl } from '../common/sdkUrl';
 
-export const RUNTIME_VERSION = '26';
+export const RUNTIME_VERSION = '27';
 
 const THEME_VAR: Record<keyof Theme, string> = {
   colorPrimary: '--sb-primary',
@@ -144,7 +144,7 @@ cursor:pointer;padding:4px 6px;border-radius:6px}
 .sb-modal-x:hover{background:var(--sb-surface);color:var(--sb-text)}
 .sb-modal-body{padding:18px;overflow-y:auto;display:flex;flex-direction:column;
 gap:var(--sb-space);flex:1 1 auto;min-height:0}
-.sb-modal-pre{margin:0;background:var(--sb-surface);border:1px solid var(--sb-border);
+.sb-modal-pre{margin:0;max-height:45vh;overflow-y:auto;background:var(--sb-surface);border:1px solid var(--sb-border);
 border-radius:var(--sb-radius);padding:12px 14px;overflow-x:auto;white-space:pre-wrap;
 word-break:break-word;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.8rem}
 .sb-value{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;padding:10px 14px;

@@ -296,8 +296,9 @@ body.dragging-any .embed-host { pointer-events: none; }
    above card content and swallows clicks and resize drags. It is also created
    asynchronously, which is why this is a CSS rule and not something set on the element
    at render time: a rule cannot lose that race. The Interact toggle flips the class. */
-body:not(.interactive) [id^="tsEmbed-pre-render-wrapper"] { pointer-events: none; }
-body.interactive [id^="tsEmbed-pre-render-wrapper"] { pointer-events: auto; }
+/* The builder arranges; it does not use. Click-through keeps cards selectable —
+   the body-level wrapper otherwise swallows every click. Interact on the live site. */
+[id^="tsEmbed-pre-render-wrapper"] { pointer-events: none; }
 
 /* ---------- properties ---------- */
 .field { margin-bottom: 11px; }
@@ -498,21 +499,25 @@ textarea.mono {
 }
 
 /* ---- the page tree in the left nav ---- */
-#pageTree { margin-bottom: 16px; }
+/* Two sections share the left pane; neither may hog it — each scrolls past 50%. */
+.palette { display: flex; flex-direction: column; min-height: 0; }
+#pageTree { flex: 0 1 auto; max-height: 50%; overflow-y: auto; margin-bottom: 16px; }
+.pal-add { flex: 0 1 auto; max-height: 50%; overflow-y: auto; }
+.pt-head, .pal-add h2 { position: sticky; top: 0; background: var(--panel); z-index: 1; }
 .pt-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
 .pt-head h2 { margin: 0; }
 .pt-head #newPage { width: auto; margin: 0; padding: 1px 9px; font-size: 14px; line-height: 1.5; border-radius: 7px; }
 .pt-row { display: flex; align-items: center; gap: 2px; min-width: 0; }
 .pt-row .pt-open {
   flex: 1 1 auto; width: auto; min-width: 0; margin-bottom: 2px; padding: 4px 8px;
-  font-size: 12.5px; border: 1px solid transparent; background: none; text-align: left;
+  font-family: ui-monospace, Menlo, monospace; font-size: 12px;
+  border: 1px solid transparent; background: none; text-align: left;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .pt-row .pt-open:hover { background: var(--accent-soft, rgba(123,63,228,.12)); }
 .pt-row.on .pt-open { background: var(--accent-soft, rgba(123,63,228,.12)); color: var(--accent, #7b3fe4); font-weight: 600; }
-.pt-ghost {
-  flex: 1 1 auto; padding: 4px 8px; font-size: 12.5px; color: var(--muted, #888);
-  opacity: .65; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
 .pt-del { width: auto; margin: 0 0 2px; padding: 2px 6px; font-size: 11px; border: 0; background: none; color: var(--muted, #888); }
 .pt-del:hover { color: var(--danger, #d33); }
+
+/* Long cluster errors (nested JSON blobs) scroll instead of flooding the dialog. */
+.dlg-err { max-height: 130px; overflow-y: auto; white-space: pre-wrap; word-break: break-word; }

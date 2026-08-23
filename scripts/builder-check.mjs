@@ -410,25 +410,20 @@ await pg.locator('#maskBody button', { hasText: 'Create' }).click();
 await pg.waitForFunction(() => (document.getElementById('status')?.textContent || '').includes('created'), { timeout: 10000 });
 ok((await api(`/api/projects/${PID}`)).pages.includes('/from-builder'), 'a page can be created from the builder');
 ok((await pg.locator('#pageTree .pt-open').count()) === 2, 'the page tree in the left nav updates');
-ok((await pg.locator('#pageTree .pt-row.on .pt-open').textContent()) === 'from-builder',
-  'the tree highlights the page you are on');
-await pg.locator('#pageTree .pt-open', { hasText: '/' }).first().click();
+ok((await pg.locator('#pageTree .pt-row.on .pt-open').textContent()) === '/from-builder',
+  'the list highlights the page you are on, full path shown flat');
+await pg.locator('#pageTree .pt-open').first().click();
 await pg.waitForTimeout(400);
 ok((await pg.locator('#pageTree .pt-row.on .pt-open').textContent()) === '/',
-  'clicking a tree node opens that page');
+  'clicking a page in the list opens it');
 
 // ---- embeds do not steal clicks while arranging ----
 ok(await pg.evaluate(() => {
   const w = document.querySelector('[id^="tsEmbed-pre-render-wrapper"]');
   return w ? getComputedStyle(w).pointerEvents === 'none' : true;
 }), 'live embeds are click-through, so cards stay selectable');
-await pg.click('#interact');
-ok(await pg.evaluate(() => {
-  const w = document.querySelector('[id^="tsEmbed-pre-render-wrapper"]');
-  return w ? getComputedStyle(w).pointerEvents === 'auto' : true;
-}), 'the Interact toggle hands clicks back to the embeds');
-ok((await pg.getAttribute('#interact', 'aria-pressed')) === 'true', 'Interact reports its state');
-await pg.click('#interact');
+ok((await pg.locator('#interact').count()) === 0,
+  'no Interact toggle — the builder arranges, the live site is where you click inside');
 
 // ---- changing the cluster host repoints the demo, and says so ----
 await pg.click('#connect');

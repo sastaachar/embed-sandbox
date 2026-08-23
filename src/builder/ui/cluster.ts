@@ -1,4 +1,5 @@
 import { PID, type MetadataItem } from './api';
+import { tokenApiMessage } from '../../common/tsError';
 
 /*
  * The cluster is called from the BROWSER. Your browser sits on the network that can
@@ -107,7 +108,8 @@ async function read(res: Response, what: string): Promise<any> {
   const hint = res.status === 401 || res.status === 403
     ? ' — check the username and password/secret key'
     : res.status === 404 ? ' — check the host' : '';
-  throw new Error(`${what} failed (${res.status})${hint}${text ? `: ${text.slice(0, 200)}` : ''}`);
+  const nice = tokenApiMessage(text);
+  throw new Error(`${what} failed (${res.status})${hint}${nice ? `: ${nice}` : text ? `: ${text.slice(0, 200)}` : ''}`);
 }
 
 /** A cross-origin fetch fails opaquely, so name the two things that actually block it. */

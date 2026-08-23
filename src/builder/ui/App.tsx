@@ -49,7 +49,6 @@ export function App() {
   const [ready, setReady] = useState(false);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [lib, setLib] = useState<any>(null);
-  const [interactive, setInteractive] = useState(false);
   // Sortable moves real DOM nodes, which leaves React's fiber tree pointing at the
   // wrong elements — later renders then write into the wrong nodes. Bumping this key
   // after a drag rebuilds the canvas from data instead of trying to reconcile with a
@@ -171,7 +170,6 @@ export function App() {
       .catch((err) => { setStatus(err.message, 'err'); setAuthState('bad'); });
   }, [ready, doc.current?.config?.thoughtSpotHost, doc.current?.config?.authType, connectEpoch]);
 
-  useEffect(() => { sdk.setInteractive(interactive); });
 
   // ---------------------------------------------------------------- saving
   const save = useCallback(async (extra?: Parameters<typeof saveDoc>[2]) => {
@@ -385,14 +383,6 @@ export function App() {
         >
           Build with AI
         </button>
-        <button
-          id="interact"
-          aria-pressed={interactive}
-          onClick={() => setInteractive((v) => !v)}
-          title="Let clicks reach the embeds instead of selecting cards"
-        >
-          Interact
-        </button>
         <span className="sp" />
         <a href={`/p/${PID}/`} target="_blank" rel="noopener">Site ↗</a>
         <button
@@ -418,10 +408,12 @@ export function App() {
             onNew={() => setDialog({ kind: 'newPage' })}
             onDelete={() => setDialog({ kind: 'delPage' })}
           />
-          <h2>Add</h2>
-          {PALETTE.map((entry) => (
-            <button key={entry.label} onClick={() => addBlock(entry)}>+ {entry.label}</button>
-          ))}
+          <div className="pal-add">
+            <h2>Add</h2>
+            {PALETTE.map((entry) => (
+              <button key={entry.label} onClick={() => addBlock(entry)}>+ {entry.label}</button>
+            ))}
+          </div>
         </section>
 
         {view === 'code' ? (

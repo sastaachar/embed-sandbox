@@ -285,7 +285,3 @@ export function watchLayout() {
   window.addEventListener('resize', onLayoutChange, { passive: true });
 }
 
-/** A class on body, not a style on each wrapper: wrappers appear asynchronously. */
-export function setInteractive(on: boolean) {
-  document.body.classList.toggle('interactive', on);
-}

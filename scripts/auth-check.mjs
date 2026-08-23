@@ -107,6 +107,44 @@ const missing = await pg.evaluate(() =>
   window.Ether.initConfig.getAuthToken().then(() => 'resolved', (e) => String(e.message)));
 ok(/no token at "data.token"/.test(missing), `missing token field is reported (${missing})`);
 
+// ---- the token API's buried error is dug out, verbatim shape from a real cluster ----
+const proj2 = await api('/api/projects', {
+  method: 'POST', headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({
+    name: 'auth-creds', namespace: 'Ether', thoughtSpotHost: 'https://stub.example.com',
+    sdkVersion: '1.51.0', authType: 'TrustedAuthTokenCookieless',
+    auth: { tokenSource: 'credentials', username: 'ghost', secret: 'nope', secretType: 'password' },
+  }),
+});
+await api(`/api/projects/${proj2.projectId}/pages`, {
+  method: 'PUT',
+  headers: { 'content-type': 'application/json', authorization: `Bearer ${proj2.editToken}` },
+  body: JSON.stringify({ path: '/', page: { blocks: [
+    { type: 'embed', embed: { type: 'liveboard', liveboardId: 'lb-1' } }] } }),
+});
+const pg2 = await b.newPage();
+pg2.on('dialog', d => d.dismiss().catch(() => {}));
+await pg2.route('**/api/rest/2.0/auth/token/full', (route) => route.fulfill({
+  status: 400, contentType: 'application/json',
+  body: JSON.stringify({ error: { message: { debug: {
+    code: 10002,
+    incident_id_guid: '505acd96-0c00-41aa-b7b5-d6ce36b3e71b',
+    trace_id_guid: '505acd96-0c00-41aa-b7b5-d6ce36b3e71b',
+    debug: '["Invalid parameter values: {\\"username\\":\\"Specified user does not exist.\\"}"]',
+  } } } }),
+}));
+await pg2.goto(`${BASE}/p/${proj2.projectId}/`, { waitUntil: 'domcontentloaded' });
+await pg2.waitForFunction(() => !!window.tsembed, { timeout: 30000 });
+await pg2.waitForFunction(() => typeof (window.Ether.initConfig || {}).getAuthToken === 'function',
+  { timeout: 15000 });
+const buried = await pg2.evaluate(() =>
+  window.Ether.initConfig.getAuthToken().then(() => 'resolved', (e) => String(e.message)));
+ok(buried.includes('username: Specified user does not exist.'),
+  `the error.message.debug.debug blob is dug out into a human message (${buried})`);
+ok(buried.includes('incident 505acd96'), 'and carries the incident id for support');
+ok(String(await pg2.evaluate(() => window.Ether.get('authError'))).includes('does not exist'),
+  'the clean message lands in Ether.get("authError") too');
+
 // ---- the outline shows the generated fetch ----
 const o = await api(`/api/projects/${PID}/outline?path=/`);
 ok(o.init.summary.includes('getAuthToken'), 'outline flags that init has a getAuthToken');

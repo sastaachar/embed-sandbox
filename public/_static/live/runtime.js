@@ -537,6 +537,36 @@
     return cur;
   }
 
+  /**
+   * The token API buries its message: error.message.debug.debug is a JSON-encoded
+   * array, whose entry may carry 'Invalid parameter values: {"field":"why"}'.
+   */
+  function tokenApiMessage(body) {
+    try {
+      var msg = body && body.error && body.error.message;
+      if (typeof msg === 'string') { try { msg = JSON.parse(msg); } catch (e) { return msg; } }
+      var dbg = msg && msg.debug;
+      var incident = dbg && dbg.incident_id_guid ? String(dbg.incident_id_guid).slice(0, 8) : null;
+      var text = typeof dbg === 'string' ? dbg : dbg && dbg.debug;
+      if (typeof text === 'string') {
+        try {
+          var arr = JSON.parse(text);
+          if (Array.isArray(arr) && arr.length) text = arr.map(String).join('; ');
+        } catch (e) { /* keep as is */ }
+      }
+      if (typeof text !== 'string' || !text) return null;
+      var m = text.match(/^([^:{]+):\s*(\{[\s\S]*\})\s*$/);
+      if (m) {
+        try {
+          var fields = JSON.parse(m[2]);
+          var parts = Object.keys(fields).map(function (k) { return k + ': ' + String(fields[k]); });
+          if (parts.length) text = m[1].replace(/\s+$/, '') + ' — ' + parts.join('; ');
+        } catch (e) { /* keep the outer text */ }
+      }
+      return incident ? text + ' (incident ' + incident + ')' : text;
+    } catch (e) { return null; }
+  }
+
   // Distinct from the button runner below: same idea, different vocabulary.
   /** The SDK loading and the SDK being configurable are different failures. */
   function sdkErrorTitle(err) {
@@ -1334,9 +1364,11 @@
             .then(function (res) {
               return res.json().catch(function () { return {}; }).then(function (json) {
                 if (!res.ok || !json.token) {
+                  var nice = tokenApiMessage(json);
                   throw new Error(
                     'the cluster refused to mint a token (' + res.status + ')' +
-                      (res.status === 401 || res.status === 403 ? ' — check the username and secret' : ''),
+                      (res.status === 401 || res.status === 403 ? ' — check the username and secret' : '') +
+                      (nice ? ': ' + nice : ''),
                   );
                 }
                 return json.token;
