@@ -451,10 +451,11 @@ textarea.mono {
 .seg button + button { border-left: 1px solid var(--line); }
 .seg button.on { background: var(--accent); color: #fff; }
 .seg button.on:hover { color: #fff; }
+/* Dark like the published site's code overlay — the prism-tomorrow theme needs it. */
 .code-out {
   flex: 1; margin: 0; overflow: auto;
   border: 1px solid var(--line); border-radius: var(--r);
-  background: var(--panel); padding: 12px 14px;
+  background: #2d2d2d; color: #ccc; padding: 12px 14px;
   font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; line-height: 1.55;
   white-space: pre; tab-size: 2;
 }

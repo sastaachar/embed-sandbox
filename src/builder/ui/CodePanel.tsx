@@ -8,6 +8,35 @@ import { PID } from './api';
 
 type Flavor = 'react' | 'esm';
 
+// Same lazy Prism the published site's ‹/› overlay uses: loaded from jsDelivr only
+// when the panel first needs it, so the builder never pays for it up front.
+const PRISM_BASE = 'https://cdn.jsdelivr.net/npm/prismjs@1.29.0';
+let prismReady: Promise<any> | null = null;
+
+function ensurePrism(): Promise<any> {
+  if (prismReady) return prismReady;
+  const css = document.createElement('link');
+  css.rel = 'stylesheet';
+  css.href = `${PRISM_BASE}/themes/prism-tomorrow.min.css`;
+  document.head.appendChild(css);
+  const parts = ['/components/prism-core.min.js', '/components/prism-markup.min.js',
+    '/components/prism-clike.min.js', '/components/prism-javascript.min.js',
+    '/components/prism-jsx.min.js'];
+  prismReady = parts
+    .reduce(
+      (chain, part) => chain.then(() => new Promise<void>((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = PRISM_BASE + part;
+        s.onload = () => resolve();
+        s.onerror = () => reject(new Error('prism failed to load'));
+        document.head.appendChild(s);
+      })),
+      Promise.resolve(),
+    )
+    .then(() => (window as any).Prism);
+  return prismReady;
+}
+
 const LABEL: Record<Flavor, string> = { react: 'React', esm: 'JavaScript' };
 const BLURB: Record<Flavor, string> = {
   react: 'Components from @thoughtspot/visual-embed-sdk/react, with useEmbedRef for host events.',
@@ -17,12 +46,15 @@ const BLURB: Record<Flavor, string> = {
 export function CodePanel(props: { path: string; onClose: () => void }) {
   const [flavor, setFlavor] = useState<Flavor>('react');
   const [code, setCode] = useState<string | null>(null);
+  // Prism's output, or null when it has not loaded (CDN blocked) — plain text then.
+  const [html, setHtml] = useState<string | null>(null);
   const [err, setErr] = useState('');
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     let live = true;
     setCode(null);
+    setHtml(null);
     setErr('');
     fetch(`/api/projects/${PID}/code?path=${encodeURIComponent(props.path)}&flavor=${flavor}`)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error('could not generate the code'))))
@@ -30,6 +62,16 @@ export function CodePanel(props: { path: string; onClose: () => void }) {
       .catch((e) => { if (live) setErr((e as Error).message); });
     return () => { live = false; };
   }, [flavor, props.path]);
+
+  useEffect(() => {
+    if (code === null) return;
+    let live = true;
+    // Prism escapes what it tokenizes, so its output is safe to inject.
+    ensurePrism()
+      .then((P) => { if (live) setHtml(P.highlight(code, P.languages.jsx, 'jsx')); })
+      .catch(() => { /* CDN unreachable: the plain <pre> below already shows the code */ });
+    return () => { live = false; };
+  }, [code]);
 
   const copy = () => {
     if (!code) return;
@@ -64,7 +106,11 @@ export function CodePanel(props: { path: string; onClose: () => void }) {
       <p className="hint">{BLURB[flavor]}</p>
       {err && <p className="dlg-err">{err}</p>}
 
-      <pre className="code-out" id="codeOut">{code === null ? 'generating…' : code}</pre>
+      {html !== null ? (
+        <pre className="code-out" id="codeOut" dangerouslySetInnerHTML={{ __html: html }} />
+      ) : (
+        <pre className="code-out" id="codeOut">{code === null ? 'generating…' : code}</pre>
+      )}
     </section>
   );
 }

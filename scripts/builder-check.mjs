@@ -402,6 +402,22 @@ ok((await pg.textContent('.sheet')).includes('added via JSON'), 'and the canvas 
   await pg.waitForTimeout(300);
 }
 
+// ---- the Code view is coloured, not a plain-text dump ----
+await pg.click('#view-code');
+await pg.waitForFunction(
+  () => (document.getElementById('codeOut')?.textContent || '').includes('LiveboardEmbed'),
+  { timeout: 15000 },
+);
+await pg.waitForFunction(
+  () => document.querySelectorAll('#codeOut .token').length > 0,
+  { timeout: 15000 },
+).then(
+  () => ok(true, 'Prism colours the builder Code view'),
+  () => ok(false, 'Prism never tokenized the builder Code view'),
+);
+await pg.click('#view-build');
+await pg.waitForTimeout(300);
+
 // ---- pages ----
 await pg.click('#newPage');
 await pg.waitForSelector('#mask:not([hidden])', { timeout: 5000 });
