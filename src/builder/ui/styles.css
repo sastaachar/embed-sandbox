@@ -500,12 +500,17 @@ textarea.mono {
 }
 
 /* ---- the page tree in the left nav ---- */
-/* Two sections share the left pane; neither may hog it — each scrolls past 50%. */
-.palette { display: flex; flex-direction: column; min-height: 0; }
-#pageTree { flex: 0 1 auto; max-height: 50%; overflow-y: auto; margin-bottom: 16px; }
-.pal-add { flex: 0 1 auto; max-height: 50%; overflow-y: auto; }
-.pt-head, .pal-add h2 { position: sticky; top: 0; background: var(--panel); z-index: 1; }
-.pt-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+/* Two sections share the left pane; neither may hog it — each scrolls past 50%.
+   The border draws the box, so a cut-off list reads as scrollable, not truncated. */
+.palette { display: flex; flex-direction: column; min-height: 0; gap: 12px; }
+#pageTree, .pal-add {
+  flex: 0 1 auto; max-height: calc(50% - 6px); overflow-y: auto;
+  border: 1px solid var(--line); border-radius: var(--r);
+  padding: 8px 10px; background: var(--panel);
+}
+.pt-head, .pal-add h2 { position: sticky; top: -8px; margin-top: -8px; padding: 8px 0 6px; background: var(--panel); z-index: 1; }
+.pt-head h2 { padding: 0; }
+.pt-head { display: flex; align-items: center; justify-content: space-between; }
 .pt-head h2 { margin: 0; }
 .pt-head #newPage { width: auto; margin: 0; padding: 1px 9px; font-size: 14px; line-height: 1.5; border-radius: 7px; }
 .pt-row { display: flex; align-items: center; gap: 2px; min-width: 0; }
