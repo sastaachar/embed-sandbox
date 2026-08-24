@@ -164,13 +164,16 @@ required for every write; reads are public because sharing is the point.
 
 1. create_project → returns projectId, editToken (SAVE IT — shown once), and every URL.
 2. Connect a cluster — username + password are REQUIRED for search_metadata and anything
-   cluster-backed. Read get_config.connection; if connected is false, ASK THE HUMAN, two
-   ways (both in connectionHelp): (a) send them the connect link
-   connection.connectUrl + "#t=<editToken>" (the token rides in the fragment, never hits
-   the server) — they fill host/username/password/authType there; or (b) they give you the
-   details here and you set_site the auth block. Then call get_config again — connected
-   flips to true. The connect link keeps the credential server-side for every auth type
-   except TrustedAuthTokenCookieless/TrustedAuthToken, where the page must ship it.
+   cluster-backed. Read get_config.connection; if connected is false, FIRST ASK THE HUMAN
+   where they want to enter the details: on the connect page (preferred — send
+   connection.connectUrl + "#t=<editToken>"; the token rides in the fragment and never
+   hits the server), or here in chat (then set_site the auth block). Verify with
+   get_config / search_metadata. IF THEY GAVE YOU CREDS HERE AND THE CLUSTER IS
+   UNREACHABLE FROM THIS SERVER (search_metadata says clusterReached: false — typically a
+   VPN-only or private host, or a self-signed HTTPS port), do not keep retrying: their
+   browser IS on that VPN, so send them the connect link and ask them to connect from the
+   page instead. The connect link also keeps the credential server-side for every auth
+   type except TrustedAuthTokenCookieless/TrustedAuthToken, where the page must ship it.
 3. lock_project → announce yourself BEFORE the first edit. Viewers of the published
    page get a "being vibe-coded right now" banner and the builder warns the human; every
    save refreshes the lock, and it expires 5 minutes after your last edit anyway.
@@ -198,7 +201,8 @@ get_config / save_config. set_site merges config; save_config and set_page repla
 | explaining the config to the human | get_code (real SDK code) or get_urls (links) |
 | checking the site hangs together | get_graph (nav + shared-value edges, dangling links) |
 | the human wants their own copy | fork_site |
-| cluster not connected yet | get_config.connection → send the human the connect link |
+| cluster not connected yet | ask the human WHERE: connect page (preferred — send the link) or creds in chat |
+| creds given in chat but clusterReached: false | VPN/private host — stop retrying, send the connect link; their browser can reach it |
 
 ## The document
 
@@ -625,18 +629,27 @@ function connectionStatus(
  * auth type it stays server-side only.
  */
 function connectionHelp(origin: string, projectId: string) {
+  const link = `${origin}/connect/${projectId}#t=<editToken>`;
   return {
-    onTheSite:
+    firstAskTheHuman:
+      'Ask WHERE they want to enter the cluster details: on the connect page (preferred), ' +
+      'or here in chat. Do not assume.',
+    onThePage:
       `Send the human this link (append the edit token as a URL fragment, which never ` +
-      `leaves their browser): ${origin}/connect/${projectId}#t=<editToken>. They fill in ` +
-      'the cluster address, username, password and auth type. Then call get_config and ' +
-      'check connection.connected.',
-    hereWithYou:
-      'Or take the cluster address, username and password from the human here and save them ' +
-      'yourself with set_site: { thoughtSpotHost, authType: "TrustedAuthTokenCookieless", ' +
-      'auth: { tokenSource: "credentials", username, secret, secretType: "password" } }. ' +
+      `leaves their browser): ${link}. They fill in the cluster address, username, ` +
+      'password and auth type. Then call get_config and check connection.connected.',
+    hereInChat:
+      'If they give you the details here, save them with set_site: { thoughtSpotHost, ' +
+      'authType: "TrustedAuthTokenCookieless", auth: { tokenSource: "credentials", ' +
+      'username, secret, secretType: "password" } }, then verify with search_metadata. ' +
       '(This path ships the secret in the public page; the connect link can keep it ' +
       'server-side for non-cookieless auth types.)',
+    ifTheClusterIsUnreachable:
+      'Creds given here but search_metadata says clusterReached: false? That is usually a ' +
+      'VPN-only or private host, or a self-signed HTTPS port — this server cannot reach ' +
+      'it, but the HUMAN\'S BROWSER can. Do not keep retrying: send them the connect link ' +
+      `(${link}) and ask them to connect from the page; if pickers still need ids, have ` +
+      'them press Sync in the builder\'s "Build with AI" dialog.',
     note: 'Username + password are required for search_metadata and any cluster-backed ' +
       'feature. For auth types other than TrustedAuthTokenCookieless/TrustedAuthToken the ' +
       'connect link keeps them server-side (not shipped to visitors).',
@@ -852,10 +865,13 @@ async function callTool(
               note: answered
                 ? 'The cluster answered but refused the credentials in auth.credentials — ' +
                   'check the username and secret. Nothing is cached to fall back on.'
-                : 'The cluster could not be reached from the server, and nothing is cached. ' +
-                  'A private IP is fine, but a self-signed HTTPS port is not — try the plain ' +
-                  'HTTP port if the cluster has one. Otherwise ask the human to open the ' +
-                  'builder and press Sync in "Build with AI".',
+                : 'The cluster could not be reached from the server — usually a VPN-only or ' +
+                  'private host, or a self-signed HTTPS port. The human\'s browser CAN reach ' +
+                  'it: do not keep retrying here; send them the connect link (see ' +
+                  'connectionHelp) so they connect from the page, or have them press Sync in ' +
+                  'the builder\'s "Build with AI" dialog. A plain HTTP port, if the cluster ' +
+                  'has one, also works from this server.',
+              connectionHelp: connectionHelp(origin, projectId),
             }),
           };
         }
