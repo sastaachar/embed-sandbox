@@ -37,11 +37,11 @@
     { "key": "fullHeight", "label": "Full height", "kind": "checkbox", "in": "config", "note": "Sizes the iframe to its content, so Height does not apply." },
     { "key": "height", "label": "Height", "kind": "length", "default": "340px", "hideWhen": "fullHeight" },
     { "key": "width", "label": "Width", "kind": "length", "placeholder": "full width" },
-    { "key": "preRender", "label": "Pre-render", "kind": "checkbox",
-      "note": "PreRendered…Embed: renders nothing itself. An embed carrying the same preRenderId attaches to it." },
+    { "key": "preRender", "label": "Load in background only", "kind": "checkbox",
+      "note": "Shows NOTHING here — becomes the SDK's PreRendered…Embed, loading invisibly so any embed with the same preRenderId appears instantly." },
     { "key": "preRenderId", "label": "Pre-render id", "kind": "text", "in": "config",
       "showWhen": "preRender", "placeholder": "required — e.g. shared-liveboard",
-      "note": "On a normal embed this CONNECTS it to the pre-render with the same id." }
+      "note": "On a normal embed this CONNECTS it to the background loader with the same id." }
   ],
 
   "embedTypes": [

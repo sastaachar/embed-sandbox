@@ -26,8 +26,8 @@ export function TypePicker(props: {
       <div className="type-grid pick">
         {EMBED_TYPES.map((t) => (
           <button key={t.type} id={`type-${t.type}`} onClick={() => props.onPick(t.type, preRender)}>
-            <span className="nm">{preRender ? `Pre-rendered ${t.label}` : t.label}</span>
-            <span className="bl">{preRender ? 'PreRendered…Embed — renders nothing itself' : t.blurb}</span>
+            <span className="nm">{preRender ? `Background ${t.label}` : t.label}</span>
+            <span className="bl">{preRender ? 'PreRendered…Embed — loads invisibly, shows nothing' : t.blurb}</span>
           </button>
         ))}
       </div>
@@ -38,12 +38,12 @@ export function TypePicker(props: {
           checked={preRender}
           onChange={(e) => setPreRender(e.target.checked)}
         />
-        Add it as a pre-render (PreRendered…Embed)
+        Load in background only (PreRendered…Embed)
       </label>
       <p className="hint">
         {preRender
-          ? 'Renders nothing itself. Add a normal embed carrying the same preRenderId to show it.'
-          : 'Set a Pre-render id on this embed to connect it to a pre-render that already exists.'}
+          ? 'Shows nothing itself. A normal embed carrying the same preRenderId shows it instantly.'
+          : 'Set a Pre-render id on this embed to connect it to a background loader that already exists.'}
       </p>
       <div className="dlg-row"><button onClick={props.onClose}>Cancel</button></div>
     </Modal>
