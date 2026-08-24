@@ -143,8 +143,16 @@ export function generateCode(
 
   const classes = [...new Set(embeds.map((e) => CLASS_FOR[e.type]))];
   const needsHostEvent = hostEventButtons.length > 0 && hasEmbeds;
+  const WIREABLE = new Set(['set', 'HostEvent', 'nav', 'open-url']);
+  const handlerActions = embeds.flatMap((e) => (e.embedEventHandlers ?? []).flatMap((h) => h.actions ?? []));
+  const hasWiredHandlers = hasEmbeds && handlerActions.some((a) => WIREABLE.has(a.type));
+  const handlerHostEvent = hasEmbeds && handlerActions.some((a) => a.type === 'HostEvent');
   const initImports = ['init', 'AuthType'];
-  const pageImports = [...classes, ...(needsHostEvent ? ['HostEvent'] : [])];
+  const pageImports = [
+    ...classes,
+    ...(needsHostEvent || handlerHostEvent ? ['HostEvent'] : []),
+    ...(hasWiredHandlers ? ['EmbedEvent'] : []),
+  ];
   const imports = [...initImports, ...pageImports];
 
   // init() is global to the app, not to a page. Kept separate so the esm flavour
@@ -223,6 +231,48 @@ export function generateCode(
   };
   const firstVisibleVar = varOf.get(embeds.findIndex((e) => !e.preRender)) ?? 'embed';
 
+  // Value blocks give set-actions a real element to write into: <span id="out-…">.
+  const valueOuts = new Map<string, { id: string; placeholder: string }>();
+  walk(page.blocks, (b) => {
+    if (b.type === 'value') {
+      valueOuts.set(b.key, { id: `out-${varName(b.key)}`, placeholder: b.placeholder ?? '—' });
+    }
+  });
+
+  // One translation for button clicks and embed events; `inHandler` is the set
+  // semantic split (button set = literal given, handler set = payload path or literal).
+  const actionStmt = (a: { type: string; params: Record<string, any> }, selfVar: string, inHandler: boolean): string | null => {
+    const p = a.params ?? {};
+    switch (a.type) {
+      case 'set': {
+        const sel = JSON.stringify(`#${valueOuts.get(String(p.key))?.id ?? `out-${varName(String(p.key))}`}`);
+        let value: string;
+        if (!inHandler) {
+          value = typeof p.value === 'string' ? JSON.stringify(p.value) : `JSON.stringify(${JSON.stringify(p.value ?? '')})`;
+        } else if ('literal' in p) {
+          value = typeof p.literal === 'string' ? JSON.stringify(p.literal) : `JSON.stringify(${JSON.stringify(p.literal)})`;
+        } else {
+          value = p.value ? `payload.${p.value}` : 'JSON.stringify(payload)';
+        }
+        return `document.querySelector(${sel}).textContent = ${value};`;
+      }
+      case 'HostEvent': {
+        if (!hasEmbeds) return null;
+        const targets = Array.isArray(p.targets) ? p.targets : [];
+        const target = (targets.length ? varForTarget(targets[0]) : null) ?? selfVar;
+        const payload = p.payload === undefined ? '' : `, ${literal(p.payload, 2)}`;
+        // A store key means the event ANSWERS (GetFilters…); land it in its span.
+        const sink = p.store
+          ? `.then((r) => { document.querySelector(${JSON.stringify(`#${valueOuts.get(String(p.store))?.id ?? `out-${varName(String(p.store))}`}`)}).textContent = JSON.stringify(r); })`
+          : '';
+        return `${target}.trigger(HostEvent.${p.type}${payload})${sink};`;
+      }
+      case 'nav': return `location.href = ${JSON.stringify(p.to)};`;
+      case 'open-url': return `window.open(${JSON.stringify(p.url)}, ${JSON.stringify(p.target || '_blank')});`;
+      default: return null; // modals are this runtime's own furniture
+    }
+  };
+
   // The site-wide defaults once, not per instance — the theme blob would otherwise
   // repeat for every embed and bury the two lines that matter.
   if (!hasEmbeds) {
@@ -268,6 +318,19 @@ export function generateCode(
     }
     lines.push('');
 
+    // Handlers go on before render(), so no early event is missed.
+    for (const h of spec.embedEventHandlers ?? []) {
+      const stmts = (h.actions ?? [])
+        .map((a) => actionStmt(a as any, varName, true))
+        .filter(Boolean) as string[];
+      if (!stmts.length) continue;
+      lines.push(`${varName}.on(EmbedEvent.${h.type}, (payload) => {`);
+      if (h.id !== undefined) lines.push(`  if (payload?.data?.id !== ${JSON.stringify(h.id)}) return;`);
+      stmts.forEach((s) => lines.push(`  ${s}`));
+      lines.push(`});`);
+      lines.push('');
+    }
+
     if (spec.preRender) {
       // The background instance. It renders nothing — its only job is loading the
       // iframe up front so the embed that shares its preRenderId paints instantly.
@@ -282,28 +345,43 @@ export function generateCode(
     lines.push('');
   });
 
-  // ---- buttons -> host events ----
-  if (hostEventButtons.length && hasEmbeds) {
-    lines.push(`// Buttons act on embed index 0 unless the action sets "targets".`);
-    hostEventButtons.forEach((btn, i) => {
-      const act = (btn.actions ?? []).find((a) => a.type === 'HostEvent');
-      if (!act) return;
-      const p = act.params as Record<string, unknown>;
-      const targets = Array.isArray(p.targets) ? p.targets : [];
-      const target = (targets.length ? varForTarget(targets[0]) : null) ?? firstVisibleVar;
-      const payload = p.payload === undefined ? '' : `, ${literal(p.payload, 2)}`;
-      lines.push(
-        `document.querySelector('#btn-${i + 1}') // ${JSON.stringify(btn.label)}`,
-      );
-      lines.push(
-        `  .addEventListener('click', () => ${target}.trigger(HostEvent.${p.type}${payload}));`,
-      );
+  // ---- buttons ----
+  {
+    const wired: string[] = [];
+    buttons.forEach((btn, i) => {
+      const stmts = (btn.actions ?? [])
+        .map((a) => actionStmt(a as any, firstVisibleVar, false))
+        .filter(Boolean) as string[];
+      if (!stmts.length) return;
+      wired.push(`document.querySelector('#btn-${i + 1}') // ${JSON.stringify(btn.label)}`);
+      if (stmts.length === 1) {
+        wired.push(`  .addEventListener('click', () => ${stmts[0].replace(/;$/, '')});`);
+      } else {
+        wired.push(`  .addEventListener('click', () => {`);
+        stmts.forEach((s) => wired.push(`    ${s}`));
+        wired.push(`  });`);
+      }
     });
-    lines.push('');
+    if (wired.length) {
+      if (needsHostEvent) lines.push(`// Host events act on embed index 0 unless the action sets "targets".`);
+      lines.push(...wired, '');
+    }
   }
 
   const pageBody = lines.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd();
   const initBody = initLines.join('\n');
+
+  // What the selectors above point at — real elements, not a promise in prose.
+  const markupLines = [
+    ...embeds.map((spec, i) => (spec.preRender
+      ? `<div id="${varOf.get(i)}" hidden></div>`
+      : `<div id="${varOf.get(i)}"></div>`)),
+    ...buttons.map((b, i) => `<button id="btn-${i + 1}">${String(b.label || 'Button').replace(/[<>&]/g, '')}</button>`),
+    ...[...valueOuts.values()].map((v) => `<span id="${v.id}">${v.placeholder.replace(/[<>&]/g, '')}</span>`),
+  ];
+  const markupComment = markupLines.length
+    ? ['/* The markup this code targets:', ...markupLines.map((l) => `   ${l}`), '*/']
+    : [];
   // The standalone page is the whole app, so it always carries its own init.
   const body = `${initBody}\n\n${pageBody}`;
 
@@ -640,6 +718,7 @@ export function generateCode(
         `// Assumes init() has already been called once at app bootstrap.`,
         ...(hasEmbeds ? [`import { ${pageImports.join(', ')} } from '${pkg}';`] : []),
         '',
+        ...(markupComment.length ? [...markupComment, ''] : []),
         `// ${path}`,
         pageBody,
         '',
@@ -658,6 +737,7 @@ export function generateCode(
       `// ─── ${path} ───`,
       ...(hasEmbeds ? [`import { ${pageImports.join(', ')} } from '${pkg}';`] : []),
       '',
+      ...(markupComment.length ? [...markupComment, ''] : []),
       pageBody,
       '',
     ].join('\n');
@@ -679,6 +759,12 @@ export function generateCode(
         .map((b, i) => `<button id="btn-${i + 1}">${b.label.replace(/[<>&]/g, '')}</button>`)
         .join('\n  ')
     : '';
+  const valueHtml = valueOuts.size
+    ? '\n  ' +
+      [...valueOuts.values()]
+        .map((v) => `<span id="${v.id}">${v.placeholder.replace(/[<>&]/g, '')}</span>`)
+        .join('\n  ')
+    : '';
 
   if (!hasEmbeds) {
     // No SDK script, no init: loading a 500 KB SDK for a page with nothing to embed
@@ -690,7 +776,7 @@ export function generateCode(
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>${(page.title || path).replace(/[<>&]/g, '')}</title>
 </head>
-<body>${btnHtml}
+<body>${btnHtml}${valueHtml}
   <!-- ${path} has no embed block yet, so nothing on this page needs the SDK.
        Add an embed block and this becomes a full Visual Embed SDK page. -->
 </body>
@@ -706,7 +792,7 @@ export function generateCode(
   <title>${(page.title || path).replace(/[<>&]/g, '')}</title>
   <script src="${sdkUrl(version)}"></script>
 </head>
-<body>${btnHtml}
+<body>${btnHtml}${valueHtml}
   ${containers}
 
   <script>

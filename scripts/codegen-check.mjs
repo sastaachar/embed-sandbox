@@ -41,6 +41,18 @@ await put('/two', { blocks: [
   { type: 'buttons', items: [{ label: 'Second', action: 'reload', embedIndex: 1 }] },
 ]});
 await put('/empty', { blocks: [{ type: 'text', text: 'nothing to embed' }] });
+await put('/events', { blocks: [
+  { type: 'value', key: 'status', label: 'Status', placeholder: 'Loading…' },
+  { type: 'embed', embed: { type: 'liveboard', config: { liveboardId: 'lb-e' },
+    embedEventHandlers: [
+      { type: 'Load', actions: [{ type: 'set', params: { key: 'status', literal: '✓ ready' } }] },
+      { type: 'VizPointClick', actions: [{ type: 'set', params: { key: 'status', value: 'data' } }] },
+    ] } },
+  { type: 'buttons', items: [
+    { label: 'Filters?', actions: [{ type: 'HostEvent', params: { type: 'GetFilters', store: 'status' } }] },
+    { label: 'Home', actions: [{ type: 'nav', params: { to: '/' } }] },
+  ]},
+]});
 
 const code = (q) => api(`/api/projects/${PID}/code?${q}`).then(r => r.code || '');
 
@@ -125,6 +137,24 @@ ok(!emptyReact.includes("from '@thoughtspot/visual-embed-sdk/react'"),
   'and no react-wrapper import it does not use');
 ok(!emptyReact.includes('embedDefaults'),
   'no-embed react drops embedDefaults — nothing exists to spread them into');
+
+// ---- the JS flavour shows events, set-actions, and the markup it targets ----
+const ev = await code('path=/events&flavor=esm');
+ok(ev.includes('.on(EmbedEvent.Load'), 'esm wires embed event handlers with .on()');
+ok(ev.includes('EmbedEvent'), 'and imports EmbedEvent for them');
+ok(ev.includes('document.querySelector("#out-status").textContent = "✓ ready";'),
+  'a literal set writes into the value span');
+ok(ev.includes('payload.data'), 'a payload-path set reads out of the payload');
+ok(ev.includes('/* The markup this code targets:'), 'esm shows the mini markup it targets');
+ok(ev.includes('<span id="out-status">Loading…</span>'), 'including the value span with its placeholder');
+ok(ev.includes('<button id="btn-2">Home</button>'), 'and every button with its real id');
+ok(ev.includes('location.href = "/"'), 'nav buttons are wired too, not skipped');
+ok(ev.includes('.then((r) => { document.querySelector("#out-status")'),
+  'a HostEvent with store lands the response in its span');
+const evCdn = await code('path=/events');
+ok(evCdn.includes('<span id="out-status">Loading…</span>'),
+  'cdn renders the value span as real HTML');
+ok(evCdn.includes('.on(EmbedEvent.Load'), 'cdn wires the handlers as well');
 
 // ---- trusted auth: init() must carry a getAuthToken, or the SDK refuses it ----
 const mk = async (authBlock) => {
