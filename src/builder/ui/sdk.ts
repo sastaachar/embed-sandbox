@@ -83,6 +83,7 @@ export function canInit(config: ProjectConfig): boolean {
   if (clusterReady()) return true;
   if (config.auth?.tokenSource === 'credentials' && config.auth.username && config.auth.secret) return true;
   if (config.auth?.tokenSource === 'endpoint') return true;
+  if (config.auth?.tokenSource === 'proxy') return true;
   return SELF_AUTH.has(config.authType || '');
 }
 
@@ -130,6 +131,16 @@ export function ensureSdk(
     } else if (config.auth?.tokenSource === 'credentials' && config.auth.username && config.auth.secret) {
       const auth = config.auth as { username: string; secret: string; secretType?: string; validitySeconds?: number };
       getAuthToken = () => mintFromConfig(host, auth);
+    } else if (config.auth?.tokenSource === 'proxy') {
+      // Same call the published page makes; the secret stays server-side.
+      getAuthToken = async () => {
+        const res = await fetch(`/api/projects/${PID}/token`, { headers: { accept: 'application/json' } });
+        const body = await res.json().catch(() => ({} as Record<string, unknown>));
+        if (!res.ok || !body.token) {
+          throw new Error(String(body.error || `the token proxy returned ${res.status}`));
+        }
+        return String(body.token);
+      };
     }
 
     // A project set to None still authenticates when this tab holds a credential —
@@ -141,8 +152,8 @@ export function ensureSdk(
     // say which of ours is missing. Refuse here instead, naming the fix.
     if (NEEDS_TOKEN.has(resolved) && !getAuthToken) {
       return reject(new Error(
-        `${resolved} needs a token — open init() and connect a cluster so this tab can ` +
-        'mint one, or tick “Let the published site log in with these credentials”',
+        `${resolved} needs a token — open Connect and log in (saving the connection ` +
+        'also turns on the token proxy for the published site)',
       ));
     }
 

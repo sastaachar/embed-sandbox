@@ -296,15 +296,16 @@ export function buildOutline(project: ProjectConfig, page: PageConfig, path: str
       ? [
           {
             name: 'getAuthToken',
-            source:
-              `() => fetch(${JSON.stringify(auth.tokenEndpoint)}` +
-              (auth.tokenMethod && auth.tokenMethod !== 'GET'
-                ? `, { method: ${JSON.stringify(auth.tokenMethod)} }`
-                : '') +
-              `)\n` +
-              (auth.tokenField
-                ? `  .then((r) => r.json())\n  .then((b) => b.${auth.tokenField})`
-                : `  .then((r) => r.text())`),
+            source: auth.tokenSource === 'proxy'
+              ? `() => fetch("/api/projects/<projectId>/token")\n  .then((r) => r.json())\n  .then((b) => b.token)`
+              : `() => fetch(${JSON.stringify(auth.tokenEndpoint)}` +
+                (auth.tokenMethod && auth.tokenMethod !== 'GET'
+                  ? `, { method: ${JSON.stringify(auth.tokenMethod)} }`
+                  : '') +
+                `)\n` +
+                (auth.tokenField
+                  ? `  .then((r) => r.json())\n  .then((b) => b.${auth.tokenField})`
+                  : `  .then((r) => r.text())`),
           },
         ]
       : undefined,

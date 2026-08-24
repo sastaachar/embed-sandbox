@@ -145,6 +145,49 @@ ok(buried.includes('incident 505acd96'), 'and carries the incident id for suppor
 ok(String(await pg2.evaluate(() => window.Ether.get('authError'))).includes('does not exist'),
   'the clean message lands in Ether.get("authError") too');
 
+// ---- the token proxy: no credential ever reaches the page ----
+const { createServer } = await import('node:http');
+const stub = createServer((req, res) => {
+  if (req.url.includes('/auth/token/')) {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ token: 'tok-proxy-1', expiration_time_in_millis: Date.now() + 300000 }));
+    return;
+  }
+  res.writeHead(404); res.end('{}');
+});
+await new Promise((r) => stub.listen(0, '127.0.0.1', r));
+const stubHost = `http://localhost:${stub.address().port}`;
+
+const proj3 = await api('/api/projects', {
+  method: 'POST', headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ name: 'auth-proxy', namespace: 'Ether', sdkVersion: '1.51.0' }),
+});
+const auth3 = { 'content-type': 'application/json', authorization: `Bearer ${proj3.editToken}` };
+await api(`/api/projects/${proj3.projectId}/pages`, { method: 'PUT', headers: auth3,
+  body: JSON.stringify({ path: '/', page: { blocks: [
+    { type: 'embed', embed: { type: 'liveboard', config: { liveboardId: 'lb-1' } } }] } }) });
+const putConn = await fetch(`${BASE}/api/projects/${proj3.projectId}/connection`, {
+  method: 'PUT', headers: auth3,
+  body: JSON.stringify({ host: stubHost, username: 'svc_embed', secret: 'server-only-secret', authType: 'TrustedAuthTokenCookieless' }),
+}).then((r) => r.json());
+ok(putConn.tokenProxy === true, 'a token auth type on the connect flow turns on the proxy');
+const cfg3 = await api(`/api/projects/${proj3.projectId}/config`);
+ok(cfg3.config.auth?.tokenSource === 'proxy', 'config.auth is { tokenSource: "proxy" }');
+ok(!JSON.stringify(cfg3).includes('server-only-secret'), 'the secret is nowhere in the public document');
+const minted = await api(`/api/projects/${proj3.projectId}/token`);
+ok(minted.token === 'tok-proxy-1', 'GET /token mints server-side from the stored connection');
+
+const pg3 = await b.newPage();
+await pg3.goto(`${BASE}/p/${proj3.projectId}/`, { waitUntil: 'domcontentloaded' });
+await pg3.waitForFunction(() => !!window.tsembed, { timeout: 30000 });
+await pg3.waitForFunction(() => typeof (window.Ether.initConfig || {}).getAuthToken === 'function',
+  { timeout: 15000 });
+const viaPage = await pg3.evaluate(() =>
+  window.Ether.initConfig.getAuthToken().then((t) => t, (e) => 'ERR:' + e.message));
+ok(viaPage === 'tok-proxy-1', `the published page fetches its token from the proxy (${viaPage})`);
+ok(!(await pg3.content()).includes('server-only-secret'), 'and the page HTML carries no credential');
+stub.close();
+
 // ---- the outline shows the generated fetch ----
 const o = await api(`/api/projects/${PID}/outline?path=/`);
 ok(o.init.summary.includes('getAuthToken'), 'outline flags that init has a getAuthToken');

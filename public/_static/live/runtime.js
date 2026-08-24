@@ -1380,6 +1380,27 @@
               throw err;
             });
         };
+      } else if (auth && auth.tokenSource === 'proxy') {
+        // This site's token proxy mints server-side from the stored connection, so
+        // the page never carries a credential.
+        cfg.getAuthToken = function () {
+          return fetch('/api/projects/' + M.projectId + '/token', {
+            headers: { accept: 'application/json' },
+          })
+            .then(function (res) {
+              return res.json().catch(function () { return {}; }).then(function (json) {
+                if (!res.ok || !json.token) {
+                  throw new Error(json.error || ('the token proxy returned ' + res.status));
+                }
+                return json.token;
+              });
+            })
+            .catch(function (err) {
+              console.error('[' + NS + '] getAuthToken failed', err);
+              store.set('authError', String((err && err.message) || err));
+              throw err;
+            });
+        };
       } else if (auth && auth.tokenSource === 'endpoint') {
         cfg.getAuthToken = function () {
           return fetch(auth.tokenEndpoint, {

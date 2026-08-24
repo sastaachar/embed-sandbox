@@ -303,9 +303,16 @@ runtime already modals genuinely fatal errors.
 The page is public; the backend stores app config only and never talks to a cluster.
   authType None — works if the cluster allows anonymous embed.
   EmbeddedSSO / SAMLRedirect / OIDCRedirect — the visitor authenticates.
-  TrustedAuthToken(Cookieless) + auth: { tokenSource: "credentials", username, secret,
-    secretType } — THE PAGE mints its own token from the cluster. The secret is in the
-    public config, readable by anyone with the link: demo-only, say so to the human.
+  TrustedAuthToken(Cookieless) + auth: { tokenSource: "proxy" } — RECOMMENDED. The page
+    calls this site's own /api/projects/<id>/token, which mints server-side from the
+    write-only connection (saved on the connect page) — NO credential in the page. Set
+    automatically when the human saves the connect page with a token auth type. Needs a
+    cluster the server can reach (public host or plain-HTTP port; not self-signed
+    HTTPS — fall back to "credentials" there). Anyone with the link can call the proxy,
+    so use a low-privilege user, auth.objectId scoping, short validity.
+  … + auth: { tokenSource: "credentials", username, secret, secretType } — THE PAGE
+    mints straight from the cluster. The secret is in the public config, readable by
+    anyone with the link: demo-only, say so to the human.
   auth: { tokenSource: "endpoint", tokenEndpoint, tokenMethod?, tokenField? } — the
     page fetches a token from the human's own service.
 
@@ -651,7 +658,9 @@ function connectionHelp(origin: string, projectId: string) {
       'them press Sync in the builder\'s "Build with AI" dialog.',
     note: 'Username + password are required for search_metadata and any cluster-backed ' +
       'feature. For auth types other than TrustedAuthTokenCookieless/TrustedAuthToken the ' +
-      'connect link keeps them server-side (not shipped to visitors).',
+      'connect link keeps them server-side (not shipped to visitors). For token auth ' +
+      'types it also sets auth.tokenSource "proxy": the published site fetches tokens ' +
+      "from this site's /token endpoint and never downloads the credential.",
   };
 }
 
@@ -743,6 +752,7 @@ async function callTool(
           path,
           flavor,
           args.includeInit !== false,
+          `${origin}/api/projects/${projectId}/token`,
         ),
       };
     }

@@ -13,6 +13,8 @@ export function useBuilder() {
   const doc = useRef<Doc | null>(null);
   const [, force] = useState(0);
   const [path, setPath] = useState('/');
+  // Non-null while the canvas edits a modal's blocks instead of the page's.
+  const [modal, setModal] = useState<{ site: boolean; name: string } | null>(null);
   const [sel, setSel] = useState<Loc | null>(null);
   const [dirty, setDirty] = useState(false);
   const [status, setStatusState] = useState<{ text: string; kind: StatusKind }>({ text: '', kind: '' });
@@ -37,7 +39,7 @@ export function useBuilder() {
   }, [path]);
 
   return {
-    doc, page, path, setPath, sel, setSel, dirty, setDirty,
+    doc, page, path, setPath, modal, setModal, sel, setSel, dirty, setDirty,
     status, setStatus, touched, render,
   };
 }

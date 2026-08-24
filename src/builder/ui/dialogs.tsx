@@ -121,6 +121,8 @@ export function ConnectDialog(props: {
     /** Put username+secret in the public page config so it can mint for itself. */
     publishCredential: { username: string; secret: string; secretType: string } | null,
     sdkVersion: string,
+    /** Stored write-only on the server; enables the token proxy and search_metadata. */
+    serverCredential: { username: string; secret: string; secretType: string } | null,
   ) => Promise<void>;
   onClose: () => void;
 }) {
@@ -157,9 +159,11 @@ export function ConnectDialog(props: {
     }
     try {
       const publishing = publish && username && (secret || clusterSecret());
+      const effectiveSecret = secret || clusterSecret();
       await props.onSave(host, hostChanged, loggedIn, authType, publishing
-        ? { username, secret: secret || clusterSecret(), secretType }
-        : null, sdkVersion.trim());
+        ? { username, secret: effectiveSecret, secretType }
+        : null, sdkVersion.trim(),
+        username && effectiveSecret ? { username, secret: effectiveSecret, secretType } : null);
       if (loggedIn) {
         setMsg({ text: `Connected as ${username}.`, kind: 'dlg-ok' });
         setTimeout(props.onClose, 700);
@@ -245,13 +249,13 @@ export function ConnectDialog(props: {
         {publish
           ? `Anyone who opens /p/… can read ${username || 'this user'}’s ${
             secretType === 'secret_key' ? 'secret key' : 'password'}. It is written into the page config. Demo only.`
-          : 'Without this the published site cannot authenticate on its own — use an authType that needs no token (None, EmbeddedSSO, SAMLRedirect, OIDCRedirect), or point auth.tokenEndpoint at a token service.'}
+          : 'Without publishing, the secret stays server-side and the published site fetches tokens from this site\u2019s token proxy instead.'}
       </p>
       {msg.text && <p className={msg.kind}>{msg.text}</p>}
       <div className="dlg-row">
         <button onClick={props.onClose}>Cancel</button>
         {conn && (
-          <button className="danger" onClick={async () => { await props.onSave(null, false, false, authType, null, sdkVersion.trim()); props.onClose(); }}>
+          <button className="danger" onClick={async () => { await props.onSave(null, false, false, authType, null, sdkVersion.trim(), null); props.onClose(); }}>
             Disconnect
           </button>
         )}

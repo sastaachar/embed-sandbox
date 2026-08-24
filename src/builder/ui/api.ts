@@ -63,3 +63,24 @@ export async function saveDoc(
 
 export interface MetadataItem { id: string; name: string }
 
+
+/**
+ * Stores the design-time credential server-side (write-only). For token auth types the
+ * backend also points config.auth at the token proxy, so the page ships no secret.
+ */
+export async function saveConnection(
+  host: string,
+  username: string,
+  secret: string,
+  secretType: string,
+  authType: string,
+): Promise<{ ok: boolean; tokenProxy?: boolean; error?: string }> {
+  const res = await fetch(`${BASE}/connection`, {
+    method: 'PUT',
+    headers: authH({ 'content-type': 'application/json' }),
+    body: JSON.stringify({ host, username, secret, secretType, authType }),
+  });
+  const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!res.ok) return { ok: false, error: String(body.error || `connection save failed (${res.status})`) };
+  return { ok: true, tokenProxy: Boolean(body.tokenProxy) };
+}

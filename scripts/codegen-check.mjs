@@ -186,6 +186,11 @@ ok(bareCode.includes('getAuthToken:') && bareCode.includes('/your-token-endpoint
 const ep = await mk({ tokenSource: 'endpoint', tokenEndpoint: 'https://api.acme.com/ts-token', tokenField: 'data.token' });
 ok(ep.includes('fetch("https://api.acme.com/ts-token")') && ep.includes('b.data.token'),
   'endpoint source: the generated fetch hits the service and reads the token field');
+const proxyCode = await mk({ tokenSource: 'proxy' });
+ok(proxyCode.includes('getAuthToken:') && /\/api\/projects\/[a-z0-9]+\/token/.test(proxyCode),
+  'proxy source: getAuthToken fetches this site\u2019s token proxy');
+ok(!proxyCode.includes('secret') && !proxyCode.includes('username'),
+  'and no credential appears anywhere in the code');
 const ssoCode = await code('path=/lb&flavor=esm');
 ok(!ssoCode.includes('getAuthToken'), 'EmbeddedSSO init() stays clean — no token, nothing to fetch');
 

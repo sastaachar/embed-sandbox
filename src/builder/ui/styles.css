@@ -460,28 +460,26 @@ textarea.mono {
   white-space: pre; tab-size: 2;
 }
 
-/* ---- advisory agent lock ----
-   A light wash over the middle view only (canvas / JSON / Map / Code — the grid's
-   1fr column between the 190px palette and 320px props), never the whole page. */
-.panes { position: relative; }
-.lock-veil {
-  position: absolute; top: 0; bottom: 0; left: 190px; right: 320px; z-index: 60;
-  display: flex; align-items: flex-start; justify-content: center;
-  background: rgba(128, 128, 128, 0.12);
+/* ---- advisory agent lock: a toolbar chip, nothing more ---- */
+.lock-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 6px 3px 10px; border-radius: 999px; font-size: 12px;
+  color: #a3781f; background: #f5ead0;
+  border: 1px solid transparent; white-space: nowrap;
 }
-.lock-card {
-  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-  margin-top: 28px; padding: 8px 14px; max-width: min(92%, 560px);
-  background: var(--panel); border: 1px solid var(--line); border-radius: 999px;
-  box-shadow: var(--shadow-lg); font-size: 12.5px;
+@media (prefers-color-scheme: dark) {
+  .lock-chip { color: #d8a94a; background: #362c17; }
 }
-.lock-card .lock-title { font-weight: 650; }
-.lock-card .lock-sub { color: var(--muted); }
-.lock-card button {
-  padding: 3px 11px; border-radius: 999px; cursor: pointer;
-  border: 1px solid var(--line); background: var(--panel); font: inherit; font-size: 12px;
+.lock-chip .lc-dot {
+  width: 7px; height: 7px; border-radius: 50%; background: currentColor;
+  animation: lc-pulse 1.4s ease-in-out infinite;
 }
-.lock-card button:hover { border-color: var(--accent); color: var(--accent); }
+@keyframes lc-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
+.lock-chip button {
+  border: 0; background: none; padding: 0 4px; font-size: 11px; line-height: 1;
+  color: inherit; opacity: .6; cursor: pointer;
+}
+.lock-chip button:hover { opacity: 1; }
 
 /* ---- the view slider: Build · JSON · Map · Code ---- */
 .viewslider {
@@ -530,3 +528,23 @@ textarea.mono {
 
 /* Long cluster errors (nested JSON blobs) scroll instead of flooding the dialog. */
 .dlg-err { max-height: 130px; overflow-y: auto; white-space: pre-wrap; word-break: break-word; }
+
+/* ---- modal rows in the page list, and the modal-editing crumb ---- */
+.pt-row.pt-modal { padding-left: 14px; }
+.pt-row.pt-modal .pt-open { font-size: 11.5px; color: var(--muted); }
+.pt-row.pt-modal.on .pt-open { color: var(--accent); }
+.pt-row .pt-add { opacity: .55; font-style: italic; }
+.pt-row .pt-add:hover { opacity: 1; }
+.pt-site {
+  margin-top: 8px; font-size: 10px; text-transform: uppercase;
+  letter-spacing: .07em; color: var(--muted); font-weight: 700;
+}
+.stage-wrap { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.stage-wrap .stage { flex: 1 1 auto; }
+.modal-crumb {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 6px 22px; font-size: 12.5px; color: var(--muted);
+  background: var(--panel); border-bottom: 1px solid var(--line);
+}
+.modal-crumb b { color: var(--ink); }
+.modal-crumb button { padding: 3px 10px; font-size: 12px; }

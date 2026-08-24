@@ -24,6 +24,7 @@ import { renderBuilder } from './builder/shell';
 import { renderForkPage } from './builder/fork';
 import { buildOutline } from './common/outline';
 import { handleMcp, manualMarkdown } from './common/mcp';
+import { TsRestError, mintToken } from './common/tsrest';
 import {
   ValidationError,
   normalizePath,
@@ -38,9 +39,9 @@ import { contrastOf, effectiveProject, resolveTheme, tsVarsFor } from './common/
 const MAX_PAGES_PER_PROJECT = 200;
 const PROJECT_ID_RE = /^[a-z0-9]{8,24}$/;
 
-// The auth types where the PAGE mints its own token from the credential — so the
-// username/secret MUST ship in the public page config. Every other auth type keeps the
-// credential server-side only (builder + search_metadata use it; visitors never see it).
+// The token auth types. Since the token proxy, the credential NEVER ships in the page:
+// these types point config.auth at tokenSource "proxy" and the published site fetches
+// /api/projects/<id>/token, minted server-side from the write-only connection.
 const SHIPS_PAGE_CREDENTIAL = new Set(['TrustedAuthTokenCookieless', 'TrustedAuthToken']);
 
 function json(data: unknown, status = 200, headers: Record<string, string> = {}) {
@@ -249,6 +250,41 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
     return json({ updatedAt: project.updatedAt, lock: project.lock });
   }
 
+  // /api/projects/:id/token — the token proxy: the published page calls this instead
+  // of carrying a credential, so the secret stays in the write-only server-side
+  // connection and never reaches the browser. Public by design (the page must call
+  // it), which means whoever has the link can mint a token for that embed user —
+  // mitigate with a low-privilege user, auth.objectId scoping and short validity.
+  // The Worker must be able to reach the cluster: a public host or a plain-HTTP
+  // port; it cannot skip a self-signed certificate.
+  if (segments.length === 4 && segments[3] === 'token') {
+    const cors = { 'access-control-allow-origin': '*' };
+    if (request.method !== 'GET') return json({ error: 'method not allowed' }, 405, cors);
+    const cred = await getConnectionSecret(env, projectId);
+    if (!cred) {
+      return json({
+        error: `no cluster connection stored — open /connect/${projectId} (edit token in the #t= fragment) and save one`,
+      }, 409, cors);
+    }
+    const hints = project.config.auth as Record<string, any> | undefined;
+    try {
+      const token = await mintToken(`proxy:${projectId}:${cred.host}:${cred.username}`, {
+        host: cred.host,
+        username: cred.username,
+        secret: cred.secret,
+        secretType: cred.secretType,
+        ...(hints?.objectId ? { objectId: String(hints.objectId) } : {}),
+        ...(hints?.orgId !== undefined ? { orgId: hints.orgId } : {}),
+        ...(hints?.validitySeconds ? { validitySeconds: hints.validitySeconds } : {}),
+      });
+      return json({ token }, 200, cors);
+    } catch (err) {
+      const msg = err instanceof TsRestError ? err.message : 'could not mint a token';
+      if (!(err instanceof TsRestError)) console.error('[token]', err);
+      return json({ error: msg }, 502, cors);
+    }
+  }
+
   // /api/projects/:id/lock — the advisory edit lock. An agent acquires it before
   // editing so the builder can warn a human editor. Nothing is ever blocked by it;
   // it expires on its own (LOCK_TTL_MS).
@@ -299,6 +335,7 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
       path,
       flavourParam as Flavor,
       url.searchParams.get('init') !== '0',
+      `${url.origin}/api/projects/${projectId}/token`,
     );
 
     if (url.searchParams.get('download') === '1') {
@@ -360,19 +397,17 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
       await setConnection(env, projectId, { host, username, secret, secretType });
     }
 
-    // Reflect the choice in the public config: host + authType always; credentials only
-    // when the PAGE itself mints (cookieless), never otherwise.
+    // Reflect the choice in the public config: host + authType always. A token auth
+    // type points the page at the TOKEN PROXY — the secret stays server-side and the
+    // published site never downloads it.
     const nextConfig = { ...project.config, thoughtSpotHost: host, authType } as typeof project.config;
     if (SHIPS_PAGE_CREDENTIAL.has(authType)) {
-      const effectiveSecret = secret || undefined; // only overwrite auth.secret when given
       nextConfig.auth = {
-        tokenSource: 'credentials',
-        username,
-        secretType,
-        ...(effectiveSecret ? { secret: effectiveSecret } : (project.config.auth?.secret ? { secret: project.config.auth.secret } : {})),
+        tokenSource: 'proxy',
+        ...(project.config.auth?.objectId ? { objectId: project.config.auth.objectId } : {}),
       } as typeof project.config.auth;
-    } else if (nextConfig.auth?.tokenSource === 'credentials') {
-      // Switched away from a page-minting auth type: stop shipping the credential.
+    } else if (nextConfig.auth?.tokenSource === 'credentials' || nextConfig.auth?.tokenSource === 'proxy') {
+      // Switched away from a token auth type: the page needs no auth block at all.
       delete nextConfig.auth;
     }
     await setProjectConfig(env, projectId, nextConfig);
@@ -380,7 +415,8 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
     return json({
       ok: true,
       authType,
-      shipsCredentialInPage: SHIPS_PAGE_CREDENTIAL.has(authType),
+      shipsCredentialInPage: false,
+      tokenProxy: SHIPS_PAGE_CREDENTIAL.has(authType),
       connection: { host, username, secretType, hasSecret: true },
     });
   }
@@ -773,8 +809,8 @@ code{background:var(--code);border:1px solid var(--line);border-radius:5px;paddi
         btn.disabled = false; btn.textContent = 'Save connection';
         if (!res.ok) { msg.className = 'msg err'; msg.textContent = (res.j && res.j.error) || 'Could not save.'; msg.hidden = false; return; }
         msg.className = 'msg ok';
-        msg.textContent = res.j.shipsCredentialInPage
-          ? 'Saved. The agent can now read your cluster. (These credentials ship in your public page for this auth type.)'
+        msg.textContent = res.j.tokenProxy
+          ? 'Saved. Your credentials stay server-side — the published site fetches tokens from this site\u2019s token proxy.'
           : 'Saved. The agent can now read your cluster. Your credentials stay server-side and are not shipped to visitors.';
         msg.hidden = false;
         $('pass').value = ''; $('pass').placeholder = '•••••• (unchanged — leave blank to keep)';

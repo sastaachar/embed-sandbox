@@ -36,8 +36,11 @@ export interface AuthConfig {
    * 'credentials' — the PAGE mints one straight from the cluster. The username and
    *                 secret are part of this config, so they are readable by anyone who
    *                 can open the site. Deliberate, and only sane for a demo.
+   * 'proxy'       — the page calls this site's own /api/projects/<id>/token, which
+   *                 mints from the write-only server-side connection. No secret in the
+   *                 browser; needs a cluster the Worker can reach.
    */
-  tokenSource: 'endpoint' | 'credentials';
+  tokenSource: 'endpoint' | 'credentials' | 'proxy';
   tokenEndpoint?: string;
   tokenMethod?: 'GET' | 'POST';
   /**
@@ -369,11 +372,13 @@ function httpUrl(v: unknown, field: string): string {
 function validateAuth(v: unknown, field: string): AuthConfig {
   const raw = plainObject(v, field);
   const source = str(raw.tokenSource, `${field}.tokenSource`, 40);
-  // The server never mints: it cannot reach a private-IP or self-signed cluster, and it
-  // holds only the app's config. Either the page calls a token endpoint, or it mints
-  // straight from the cluster with credentials that are part of this public config.
-  if (source !== 'endpoint' && source !== 'credentials') {
-    fail(`${field}.tokenSource must be "endpoint" or "credentials"`);
+  // Three ways to a token: the page calls its own service ("endpoint"), mints straight
+  // from the cluster with credentials that are part of this public config
+  // ("credentials"), or calls this site's token proxy ("proxy") — which mints from the
+  // write-only server-side connection, so no secret ever reaches the browser. The proxy
+  // needs a cluster the Worker can reach (public host or plain-HTTP; not self-signed).
+  if (source !== 'endpoint' && source !== 'credentials' && source !== 'proxy') {
+    fail(`${field}.tokenSource must be "endpoint", "credentials" or "proxy"`);
   }
   const out: AuthConfig = { tokenSource: source };
 

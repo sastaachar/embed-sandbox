@@ -127,6 +127,8 @@ export function generateCode(
   flavor: Flavor = 'cdn',
   /** esm only: emit the app-level init() block. Ignored for cdn, which is standalone. */
   includeInit = true,
+  /** Absolute URL of this project's token proxy, for auth.tokenSource "proxy". */
+  tokenProxyUrl?: string,
 ): string {
   const embeds = embedsIn(page);
   // Every button, not only the ones that fire a host event: the React flavour renders
@@ -163,6 +165,14 @@ export function generateCode(
   const auth = project.auth as Record<string, any> | undefined;
   const getAuthTokenLines = (() => {
     if (!tokenAuth) return [];
+    if (auth?.tokenSource === 'proxy') {
+      const proxyUrl = tokenProxyUrl ?? '/api/projects/<projectId>/token';
+      return [
+        `  // Must return a valid token for the embed user. This site's token proxy`,
+        `  // mints one server-side, so no credential lives in this code.`,
+        `  getAuthToken: () => fetch(${JSON.stringify(proxyUrl)}).then((r) => r.json()).then((b) => b.token),`,
+      ];
+    }
     if (auth?.tokenSource === 'credentials') {
       const mintBody: Record<string, unknown> = {
         username: auth.username,

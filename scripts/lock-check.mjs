@@ -81,22 +81,24 @@ await pg2.goto(`${BASE}/build/${PID}`, { waitUntil: 'domcontentloaded' });
 await pg2.fill('#token', TOKEN);
 await pg2.click('#gateForm button');
 await pg2.waitForSelector('#work.on', { timeout: 10000 });
-await pg2.waitForSelector('#lockVeil', { timeout: 15000 });
-const veil = await pg2.textContent('#lockVeil');
-ok(veil.includes('Claude is vibe-coding this demo'), 'builder veils the canvas while an agent holds the lock');
-ok(veil.includes('overwritten by the AI overlords'), 'and says why editing is risky');
+await pg2.waitForSelector('#lockChip', { timeout: 15000 });
+ok((await pg2.textContent('#lockChip')).includes('Claude is editing'),
+  'the builder shows a small toolbar chip while an agent holds the lock — no modal, no veil');
+ok((await pg2.getAttribute('#lockChip', 'title')).includes('overwritten by the AI overlords'),
+  'the risk lives in the tooltip');
+ok((await pg2.locator('.lock-veil').count()) === 0, 'nothing overlays the canvas');
 await pg2.click('#lockEditAnyway');
-await pg2.waitForSelector('#lockVeil', { state: 'detached', timeout: 5000 });
-ok(true, 'Edit anyway dismisses the veil');
+await pg2.waitForSelector('#lockChip', { state: 'detached', timeout: 5000 });
+ok(true, 'the chip can be dismissed');
 // the dismissal must hold across polls while the same lock stands
 await pg2.waitForTimeout(5000);
-ok(!(await pg2.isVisible('#lockVeil').catch(() => false)), 'the veil stays dismissed while the same lock stands');
-// release, then take a fresh lock: the veil must return
+ok(!(await pg2.isVisible('#lockChip').catch(() => false)), 'and stays dismissed while the same lock stands');
+// release, then take a fresh lock: the chip must return
 await api(`/api/projects/${PID}/lock`, { method: 'DELETE', headers: auth });
 await pg2.waitForTimeout(5000);
 await api(`/api/projects/${PID}/lock`, { method: 'POST', headers: auth, body: JSON.stringify({ holder: 'Claude' }) });
-await pg2.waitForSelector('#lockVeil', { timeout: 15000 });
-ok(true, 'a fresh lock after release veils again');
+await pg2.waitForSelector('#lockChip', { timeout: 15000 });
+ok(true, 'a fresh lock after release shows it again');
 
 await api(`/api/projects/${PID}/lock`, { method: 'DELETE', headers: auth });
 await b.close();

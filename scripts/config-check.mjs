@@ -87,14 +87,16 @@ ok(!JSON.stringify((await doc()).body).includes('letmein'),
 ok(!(await fetch(`${BASE}/p/${PID}/`).then(r => r.text())).includes('letmein'),
   'nor in the rendered page, which is public');
 
-for (const [path, method] of [['token', 'POST'], ['metadata', 'GET']]) {
-  const res = await fetch(`${BASE}/api/projects/${PID}/${path}`, {
-    method,
-    headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' },
-    body: method === 'POST' ? '{}' : undefined,
-  });
-  ok(res.status === 404, `/${path} is gone — the backend does not mint tokens or proxy metadata (${res.status})`);
-}
+ok((await fetch(`${BASE}/api/projects/${PID}/metadata`)).status === 404,
+  '/metadata is gone — the backend does not proxy metadata');
+
+// /token is back as the TOKEN PROXY: GET-only, public, minting from the write-only
+// server-side connection so the page never carries a credential.
+ok((await fetch(`${BASE}/api/projects/${PID}/token`, { method: 'POST', body: '{}' })).status === 405,
+  '/token accepts only GET');
+const noConn = await fetch(`${BASE}/api/projects/${PID}/token`);
+ok(noConn.status === 409 && (await noConn.json()).error.includes('/connect/'),
+  'proxy without a stored connection explains the connect page');
 
 // /connection is back for the standalone connect page: GET/PUT only, token-gated,
 // secret write-only. It stores a design-time credential server-side; it never mints.

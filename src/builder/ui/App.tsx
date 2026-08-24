@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { Block, Doc, EmbedType, Loc } from './types';
 import { blockAt, deepClone, indexAt, listAt, listFromKey, listKey, locOf, setEmbedType } from './blocks';
-import { getToken, loadDoc, PID, projectVersion, saveDoc, setToken, verifyToken, type EditLock } from './api';
+import { getToken, loadDoc, PID, projectVersion, saveConnection, saveDoc, setToken, verifyToken, type EditLock } from './api';
 import { clearCluster, clusterUsername } from './cluster';
 import { useBuilder } from './store';
 import { Canvas, wireResize } from './Canvas';
@@ -43,6 +43,8 @@ type Dialog =
   | { kind: 'buildAi' }
   | { kind: 'newPage' }
   | { kind: 'delPage' }
+  | { kind: 'newModal' }
+  | { kind: 'delModal'; scope: { site: boolean; name: string } }
   | null;
 
 export function App() {
@@ -95,6 +97,8 @@ export function App() {
   // it moves — but never on top of unsaved edits: say so and let the user decide.
   const seenVersion = useRef<number | null>(null);
   const prevLock = useRef<EditLock | null>(null);
+  // The container the canvas is editing NOW (page or modal) — for callbacks wired once.
+  const containerRef = useRef<ReturnType<typeof page> | null>(null);
   useEffect(() => {
     if (!ready) return;
     let live = true;
@@ -134,7 +138,7 @@ export function App() {
   useEffect(() => {
     if (!ready) return;
     wireResize((loc, height, width) => {
-      const block = blockAt(page(), loc);
+      const block = blockAt(containerRef.current ?? page(), loc);
       if (!block || block.type !== 'embed') return;
       if (!block.embed!.config.fullHeight) block.embed!.height = height;
       if (width) block.embed!.width = width; else delete block.embed!.width;
@@ -210,8 +214,35 @@ export function App() {
   if (!ready) return <Gate onOpen={openWith} />;
 
   const d = doc.current!;
-  const current = page();
+  const pageCfg = page();
+  // A modal is edited with the whole canvas — same blocks, same panel, its own scope.
+  let current = pageCfg;
+  if (b.modal) {
+    const store = ((b.modal.site ? d.config.modals : pageCfg.modals) ?? {}) as Record<string, any>;
+    const m = store[b.modal.name];
+    if (m) {
+      if (!m.blocks) m.blocks = [];
+      current = m as unknown as typeof pageCfg;
+    }
+  }
   const selected = blockAt(current, sel);
+  containerRef.current = current;
+
+  const leaveModal = () => {
+    b.setModal(null);
+    setSel(null);
+    sdk.releaseAll();
+    setCanvasEpoch((n) => n + 1);
+    render();
+  };
+  const openModalScope = (pagePath: string | null, name: string) => {
+    if (pagePath !== null && pagePath !== path) b.setPath(pagePath);
+    b.setModal({ site: pagePath === null, name });
+    setSel(null);
+    sdk.releaseAll();
+    setCanvasEpoch((n) => n + 1);
+    render();
+  };
 
   // ---------------------------------------------------------------- editing
   const addBlock = (entry: { label: string; chooseType?: boolean; block: Block }) => {
@@ -380,30 +411,35 @@ export function App() {
         >
           Forget token
         </button>
+        {agentLock && !lockDismissed && (
+          <span
+            className="lock-chip"
+            id="lockChip"
+            title={`${agentLock.note ? `“${agentLock.note}” — ` : ''}your changes might be overwritten by the AI overlords`}
+          >
+            <span className="lc-dot" />
+            {agentLock.holder} is editing
+            <button id="lockEditAnyway" title="Hide until the lock changes" onClick={() => setLockDismissed(true)}>✕</button>
+          </span>
+        )}
         <span id="status" className={b.status.kind}>{b.status.text}</span>
         <button id="save" className="primary" onClick={() => void save()}>Save</button>
       </header>
 
       <div className="panes">
-        {agentLock && !lockDismissed && (
-          <div className="lock-veil" id="lockVeil">
-            <div className="lock-card">
-              <span className="lock-title">{agentLock.holder} is vibe-coding this demo</span>
-              <span className="lock-sub">
-                {agentLock.note ? <>“{agentLock.note}” — </> : null}
-                your changes might be overwritten by the AI overlords
-              </span>
-              <button id="lockEditAnyway" onClick={() => setLockDismissed(true)}>Edit anyway</button>
-            </div>
-          </div>
-        )}
         <section className="pane palette" id="palette">
           <PageTree
             paths={pages}
+            modalsOf={(p) => Object.keys(d.pages[p]?.modals ?? {})}
+            siteModals={Object.keys(d.config.modals ?? {})}
             current={path}
-            onOpen={(p) => { b.setPath(p); setSel(null); sdk.releaseAll(); render(); }}
+            currentModal={b.modal}
+            onOpen={(p) => { b.setModal(null); b.setPath(p); setSel(null); sdk.releaseAll(); render(); }}
+            onOpenModal={openModalScope}
             onNew={() => setDialog({ kind: 'newPage' })}
             onDelete={() => setDialog({ kind: 'delPage' })}
+            onNewModal={() => setDialog({ kind: 'newModal' })}
+            onDeleteModal={(scope) => setDialog({ kind: 'delModal', scope })}
           />
           <div className="pal-add">
             <h2>Add</h2>
@@ -418,13 +454,13 @@ export function App() {
         ) : view === 'map' ? (
           <MapPanel
             onClose={() => switchView('build')}
-            onOpenPage={(p) => { switchView('build'); b.setPath(p); setSel(null); render(); }}
+            onOpenPage={(p) => { switchView('build'); b.setModal(null); b.setPath(p); setSel(null); render(); }}
           />
         ) : view === 'json' ? (
           <JsonPanel
             doc={d}
             path={path}
-            page={current}
+            page={pageCfg}
             dirtyKey={docEpoch}
             onClose={() => switchView('build')}
             onApply={async (scope, parsed) => {
@@ -447,16 +483,27 @@ export function App() {
             }}
           />
         ) : (
-          <Canvas
-            key={canvasEpoch}
-            blocks={current.blocks}
-            sel={sel}
-            onSelect={(loc) => { setSel(loc); render(); }}
-            onMove={move}
-            onResize={() => { /* wired once via interact.js */ }}
-            lib={lib}
-            mountError={null}
-          />
+          <div className="pane stage-wrap">
+            {b.modal && (
+              <div className="modal-crumb" id="modalCrumb">
+                <span>
+                  editing modal <b>“{b.modal.name}”</b>
+                  {b.modal.site ? ' (site-wide)' : <> on <span className="mono">{path}</span></>}
+                </span>
+                <button id="backToPage" onClick={leaveModal}>← Back to page</button>
+              </div>
+            )}
+            <Canvas
+              key={`${canvasEpoch}:${b.modal ? `${b.modal.site ? '@site' : path}#${b.modal.name}` : path}`}
+              blocks={current.blocks}
+              sel={sel}
+              onSelect={(loc) => { setSel(loc); render(); }}
+              onMove={move}
+              onResize={() => { /* wired once via interact.js */ }}
+              lib={lib}
+              mountError={null}
+            />
+          </div>
         )}
 
         <PropsPanel
@@ -494,7 +541,7 @@ export function App() {
           defaultSdkVersion={String(d.config.sdkVersion || '')}
           onCredentialChange={() => setConnectEpoch((n) => n + 1)}
           onClose={() => setDialog(null)}
-          onSave={async (host, hostChanged, loggedIn, authType, publishCredential, sdkVersion) => {
+          onSave={async (host, hostChanged, loggedIn, authType, publishCredential, sdkVersion, serverCredential) => {
             if (host === null) clearCluster();
             // Connecting or disconnecting changes what init() should be built from.
             setConnectEpoch((n) => n + 1);
@@ -510,17 +557,29 @@ export function App() {
               d.config.thoughtSpotHost = host;
               d.config.authType = authType;
               if (sdkVersion) d.config.sdkVersion = sdkVersion; else delete d.config.sdkVersion;
+              const tokenAuth = authType === 'TrustedAuthTokenCookieless' || authType === 'TrustedAuthToken';
               if (publishCredential) {
                 d.config.auth = {
                   ...(d.config.auth || {}),
                   tokenSource: 'credentials',
                   ...publishCredential,
                 };
-              } else if (d.config.auth?.tokenSource === 'credentials') {
+              } else if (tokenAuth && (serverCredential || d.config.auth?.tokenSource === 'proxy')) {
+                // No secret in the page: the published site calls the token proxy,
+                // which mints from the server-side connection saved below.
+                d.config.auth = { tokenSource: 'proxy' };
+              } else if (d.config.auth?.tokenSource === 'credentials' || d.config.auth?.tokenSource === 'proxy') {
                 d.config.auth = undefined;
               }
             }
             await save();
+            if (host && serverCredential) {
+              const stored = await saveConnection(
+                host, serverCredential.username, serverCredential.secret,
+                serverCredential.secretType, authType,
+              ).catch((e) => ({ ok: false, error: (e as Error).message }));
+              if (!stored.ok) setStatus(`connection not stored server-side: ${stored.error}`, 'err');
+            }
             await reload();
             if (versionChanged) {
               setStatus(`SDK ${sdkVersion || 'latest'} — reloading to load that bundle`, 'ok');
@@ -575,6 +634,41 @@ export function App() {
           }}
         />
       )}
+      {dialog?.kind === 'newModal' && (
+        <PromptDialog
+          title={`New modal on ${path}`}
+          initial="detail"
+          confirmLabel="Create"
+          onClose={() => setDialog(null)}
+          onConfirm={async (value) => {
+            const name = value.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '-');
+            if (!name) return;
+            const pg = pageCfg as any;
+            pg.modals = pg.modals || {};
+            if (!pg.modals[name]) pg.modals[name] = { title: name, blocks: [] };
+            setDialog(null);
+            touched();
+            openModalScope(path, name);
+            setStatus(`modal “${name}” — add blocks, then Save`, 'ok');
+          }}
+        />
+      )}
+      {dialog?.kind === 'delModal' && (
+        <ConfirmDialog
+          title={`Delete modal “${dialog.scope.name}”?`}
+          confirmLabel="Delete"
+          onClose={() => setDialog(null)}
+          onConfirm={async () => {
+            const store = (dialog.scope.site ? d.config.modals : pageCfg.modals) as
+              Record<string, unknown> | undefined;
+            if (store) delete store[dialog.scope.name];
+            setDialog(null);
+            leaveModal();
+            touched();
+            setStatus('modal deleted — Save to persist', 'ok');
+          }}
+        />
+      )}
       {dialog?.kind === 'delPage' && (
         <ConfirmDialog
           title={`Delete ${path}?`}
@@ -583,6 +677,7 @@ export function App() {
           onConfirm={async () => {
             const gone = path;
             delete d.pages[gone];
+            b.setModal(null);
             setDialog(null);
             const left = Object.keys(d.pages).sort();
             b.setPath(left[0] || '/');

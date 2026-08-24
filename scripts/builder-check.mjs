@@ -425,7 +425,41 @@ await pg.fill('#maskBody input', '/from-builder');
 await pg.locator('#maskBody button', { hasText: 'Create' }).click();
 await pg.waitForFunction(() => (document.getElementById('status')?.textContent || '').includes('created'), { timeout: 10000 });
 ok((await api(`/api/projects/${PID}`)).pages.includes('/from-builder'), 'a page can be created from the builder');
-ok((await pg.locator('#pageTree .pt-open').count()) === 2, 'the page tree in the left nav updates');
+ok((await pg.locator('#pageTree .pt-row:not(.pt-modal) .pt-open').count()) === 2, 'the page tree in the left nav updates');
+
+// ---- modals nest under their page and edit on the same canvas ----
+await pg.click('#newModal');
+await pg.waitForSelector('#mask:not([hidden])', { timeout: 5000 });
+await pg.fill('#maskBody input', 'demo-modal');
+await pg.locator('#maskBody button', { hasText: 'Create' }).click();
+await pg.waitForSelector('#modalCrumb', { timeout: 5000 });
+ok((await pg.textContent('#modalCrumb')).includes('demo-modal'),
+  'creating a modal opens it on the canvas, with a crumb saying so');
+ok((await pg.locator('.card').count()) === 0, 'a new modal starts empty');
+await pg.locator('#palette button', { hasText: '+ Heading' }).first().click();
+await pg.waitForTimeout(300);
+ok((await pg.locator('.card').count()) === 1, 'the palette adds blocks INTO the modal');
+await pg.click('#save');
+await pg.waitForFunction(() => (document.getElementById('status')?.textContent || '') === 'saved', { timeout: 10000 });
+const withModal = await api(`/api/projects/${PID}/config`);
+ok((withModal.pages['/from-builder']?.modals?.['demo-modal']?.blocks || []).length === 1,
+  'the modal round-trips through Save under its page');
+ok((await pg.locator('#pageTree .pt-modal .pt-open').filter({ hasText: 'demo-modal' }).count()) === 1,
+  'the modal shows nested under its page in the list');
+await pg.click('#backToPage');
+await pg.waitForTimeout(300);
+ok((await pg.locator('#modalCrumb').count()) === 0, 'Back to page leaves the modal scope');
+await pg.locator('#pageTree .pt-modal .pt-open').filter({ hasText: 'demo-modal' }).click();
+await pg.waitForSelector('#modalCrumb', { timeout: 5000 });
+ok((await pg.locator('.card').count()) === 1, 'clicking the nested row reopens the modal with its blocks');
+await pg.locator('#pageTree .pt-modal.on .pt-del').click();
+await pg.waitForSelector('#maskBody', { timeout: 5000 });
+await pg.locator('#maskBody button', { hasText: 'Delete' }).click();
+await pg.waitForTimeout(300);
+ok((await pg.locator('#pageTree .pt-modal .pt-open').filter({ hasText: 'demo-modal' }).count()) === 0,
+  'deleting removes the nested row');
+await pg.click('#save');
+await pg.waitForFunction(() => (document.getElementById('status')?.textContent || '') === 'saved', { timeout: 10000 });
 ok((await pg.locator('#pageTree .pt-row.on .pt-open').textContent()) === '/from-builder',
   'the list highlights the page you are on, full path shown flat');
 await pg.locator('#pageTree .pt-open').first().click();
