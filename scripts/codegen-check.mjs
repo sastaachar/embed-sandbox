@@ -148,10 +148,11 @@ const credCode = await mk({ tokenSource: 'credentials', username: 'demo', secret
 ok(credCode.includes('getAuthToken:'), 'trusted auth + credentials: init() carries getAuthToken');
 ok(credCode.includes('/api/rest/2.0/auth/token/full') && credCode.includes('"username":"demo"'),
   'and it mints from the cluster the way the runtime does');
-ok(credCode.includes('VISIBLE in this file'), 'with the public-secret trade-off stated');
+ok(credCode.includes('// Must return a valid token for the embed user.'),
+  'with one line of comment, not a sermon');
 const bareCode = await mk(null);
-ok(bareCode.includes('getAuthToken:') && bareCode.includes('REQUIRED for AuthType.TrustedAuthTokenCookieless'),
-  'trusted auth with no token source: a stub getAuthToken that names the requirement');
+ok(bareCode.includes('getAuthToken:') && bareCode.includes('/your-token-service'),
+  'trusted auth with no token source: a stub getAuthToken pointing at your backend');
 const ep = await mk({ tokenSource: 'endpoint', tokenEndpoint: 'https://api.acme.com/ts-token', tokenField: 'data.token' });
 ok(ep.includes('fetch("https://api.acme.com/ts-token")') && ep.includes('b.data.token'),
   'endpoint source: the generated fetch hits the service and reads the token field');

@@ -165,9 +165,7 @@ export function generateCode(
       const mintUrl = host.replace(/\/+$/, '') +
         (auth.objectId ? '/api/rest/2.0/auth/token/object' : '/api/rest/2.0/auth/token/full');
       return [
-        `  // AuthType.${authType} needs a fresh token per session. This mints straight`,
-        `  // from the cluster with credentials VISIBLE in this file — the demo trade-off.`,
-        `  // In production this fetch goes to your own token service instead.`,
+        `  // Must return a valid token for the embed user.`,
         `  getAuthToken: () =>`,
         `    fetch(${JSON.stringify(mintUrl)}, {`,
         `      method: "POST",`,
@@ -184,13 +182,12 @@ export function generateCode(
         ? `.then((r) => r.json()).then((b) => b.${auth.tokenField})`
         : `.then((r) => r.text())`;
       return [
-        `  // AuthType.${authType} needs a fresh token per session, from your service:`,
+        `  // Must return a valid token for the embed user.`,
         `  getAuthToken: () => fetch(${JSON.stringify(auth.tokenEndpoint)}${opts})${read},`,
       ];
     }
     return [
-      `  // REQUIRED for AuthType.${authType} — the SDK refuses to init without it.`,
-      `  // Return a fresh token for the embed user from YOUR backend:`,
+      `  // Must return a valid token for the embed user.`,
       `  getAuthToken: () => fetch("/your-token-service").then((r) => r.text()),`,
     ];
   })();
