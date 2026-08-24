@@ -188,7 +188,7 @@ export function generateCode(
     }
     return [
       `  // Must return a valid token for the embed user.`,
-      `  getAuthToken: () => fetch("/your-token-service").then((r) => r.text()),`,
+      `  getAuthToken: () => fetch("/your-token-endpoint").then((r) => r.text()),`,
     ];
   })();
   const initLines = [

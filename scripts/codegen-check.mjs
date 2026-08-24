@@ -151,7 +151,7 @@ ok(credCode.includes('/api/rest/2.0/auth/token/full') && credCode.includes('"use
 ok(credCode.includes('// Must return a valid token for the embed user.'),
   'with one line of comment, not a sermon');
 const bareCode = await mk(null);
-ok(bareCode.includes('getAuthToken:') && bareCode.includes('/your-token-service'),
+ok(bareCode.includes('getAuthToken:') && bareCode.includes('/your-token-endpoint'),
   'trusted auth with no token source: a stub getAuthToken pointing at your backend');
 const ep = await mk({ tokenSource: 'endpoint', tokenEndpoint: 'https://api.acme.com/ts-token', tokenField: 'data.token' });
 ok(ep.includes('fetch("https://api.acme.com/ts-token")') && ep.includes('b.data.token'),
