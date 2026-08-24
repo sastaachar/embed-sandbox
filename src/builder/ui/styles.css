@@ -460,25 +460,28 @@ textarea.mono {
   white-space: pre; tab-size: 2;
 }
 
-/* ---- advisory agent lock ---- */
+/* ---- advisory agent lock ----
+   A light wash over the middle view only (canvas / JSON / Map / Code — the grid's
+   1fr column between the 190px palette and 320px props), never the whole page. */
+.panes { position: relative; }
 .lock-veil {
-  position: fixed; inset: 0; z-index: 200;
-  display: flex; align-items: center; justify-content: center;
-  background: rgba(10, 12, 18, 0.55); backdrop-filter: blur(2px);
+  position: absolute; top: 0; bottom: 0; left: 190px; right: 320px; z-index: 60;
+  display: flex; align-items: flex-start; justify-content: center;
+  background: rgba(128, 128, 128, 0.12);
 }
 .lock-card {
-  max-width: 420px; margin: 16px; padding: 22px 24px;
-  background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-top: 28px; padding: 8px 14px; max-width: min(92%, 560px);
+  background: var(--panel); border: 1px solid var(--line); border-radius: 999px;
+  box-shadow: var(--shadow-lg); font-size: 12.5px;
 }
-.lock-card .lock-title { font-weight: 650; font-size: 15px; margin-bottom: 8px; }
-.lock-card p { margin: 0 0 8px; font-size: 13px; line-height: 1.5; }
-.lock-card .lock-sub { color: var(--muted, #888); font-size: 12px; }
+.lock-card .lock-title { font-weight: 650; }
+.lock-card .lock-sub { color: var(--muted); }
 .lock-card button {
-  margin-top: 6px; padding: 7px 14px; border-radius: 8px; cursor: pointer;
-  border: 1px solid var(--line); background: var(--panel); font: inherit; font-size: 13px;
+  padding: 3px 11px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--panel); font: inherit; font-size: 12px;
 }
-.lock-card button:hover { border-color: var(--accent, #7b3fe4); }
+.lock-card button:hover { border-color: var(--accent); color: var(--accent); }
 
 /* ---- the view slider: Build · JSON · Map · Code ---- */
 .viewslider {

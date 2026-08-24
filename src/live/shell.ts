@@ -3,7 +3,7 @@ import type { Theme } from '../common/schema';
 import { resolveTheme } from '../common/theme';
 import { SDK_CDN_ORIGIN, sdkUrl } from '../common/sdkUrl';
 
-export const RUNTIME_VERSION = '27';
+export const RUNTIME_VERSION = '28';
 
 const THEME_VAR: Record<keyof Theme, string> = {
   colorPrimary: '--sb-primary',
@@ -97,15 +97,6 @@ line-height:1.4;transition:filter .12s ease,background .12s ease}
 color:var(--sb-primary-text)}
 .sb-btn[data-variant="ghost"]{background:transparent;border-color:transparent;color:var(--sb-muted)}
 .sb-btn:disabled{opacity:.5;cursor:not-allowed}
-.sb-lock-banner{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:96;
-display:flex;align-items:center;gap:8px;max-width:calc(100vw - 32px);
-padding:8px 14px;border-radius:999px;background:var(--sb-text);color:var(--sb-bg);
-font-size:.8rem;line-height:1.4;box-shadow:0 6px 20px rgba(15,18,45,.3);
-animation:sb-lock-in .25s ease}
-.sb-lock-banner .sb-lock-dot{width:8px;height:8px;border-radius:50%;background:#5eead4;
-flex:0 0 auto;animation:sb-lock-pulse 1.4s ease-in-out infinite}
-@keyframes sb-lock-in{from{opacity:0;transform:translate(-50%,8px)}to{opacity:1;transform:translate(-50%,0)}}
-@keyframes sb-lock-pulse{0%,100%{opacity:1}50%{opacity:.35}}
 .sb-code-fab{position:fixed;right:18px;bottom:18px;z-index:90;width:44px;height:44px;
 border-radius:50%;border:1px solid var(--sb-border);background:var(--sb-surface);
 color:var(--sb-text);font:600 15px/1 ui-monospace,Menlo,monospace;cursor:pointer;
@@ -201,8 +192,8 @@ export function buildManifest(project: Project, pages: Page[], basePath: string)
     sdkUrl: sdkUrl(project.config.sdkVersion),
     project: project.config,
     pages: pages.map((p) => ({ path: p.path, ...p.config })),
-    // The shell is edge-cached, so this can be stale on first paint; the /version
-    // poll carries the live value and corrects it within one tick.
+    // Read by the builder and tests; the published page ignores it (the lock warns
+    // in the builder only).
     lock: project.lock ?? null,
   };
 }

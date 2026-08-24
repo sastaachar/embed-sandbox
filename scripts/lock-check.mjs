@@ -1,7 +1,6 @@
 /**
- * Verifies the advisory edit lock: the API, the MCP tools, the published page's
- * "being vibe-coded" banner appearing and clearing live, and the builder's veil
- * with its Edit anyway escape hatch.
+ * Verifies the advisory edit lock: the API, the MCP tools, that the published page
+ * is NOT touched by it, and the builder's veil with its Edit anyway escape hatch.
  *   BASE=http://127.0.0.1:8899 node scripts/lock-check.mjs
  */
 import { createRequire } from 'node:module';
@@ -42,26 +41,15 @@ ok(v.body.lock && v.body.lock.holder === 'Claude', '/version carries the lock, s
 const man = await api(`/api/projects/${PID}/manifest`);
 ok(man.body.lock && man.body.lock.holder === 'Claude', 'the manifest carries the lock for first paint');
 
-// ---- the published page shows and clears the banner live ----
+// ---- the published page is NOT touched by the lock (builder-only warning) ----
 const b = await chromium.launch({ channel: 'chrome' });
 const pg = await b.newPage();
 await pg.goto(`${BASE}/p/${PID}/`, { waitUntil: 'domcontentloaded' });
-await pg.waitForSelector('.sb-lock-banner', { timeout: 8000 });
-const bannerText = await pg.textContent('.sb-lock-banner');
-ok(bannerText.includes('Claude is vibe-coding this demo right now'), `banner names the holder (${bannerText.trim().slice(0, 60)}…)`);
-ok(bannerText.includes('AI overlords'), 'the AI overlords get their credit');
-
-await api(`/api/projects/${PID}/lock`, { method: 'DELETE', headers: auth });
-// The page polls /version every few seconds; a focus event forces a check.
+await pg.waitForSelector('.sb-btn, .sb-text, h1', { timeout: 8000 }).catch(() => {});
 await pg.evaluate(() => window.dispatchEvent(new Event('focus')));
-await pg.waitForSelector('.sb-lock-banner', { state: 'detached', timeout: 15000 });
-ok(true, 'releasing the lock removes the banner without a reload');
-
-// re-acquire while the page is open: the banner comes back
-await api(`/api/projects/${PID}/lock`, { method: 'POST', headers: auth, body: JSON.stringify({ holder: 'an AI agent' }) });
-await pg.evaluate(() => window.dispatchEvent(new Event('focus')));
-await pg.waitForSelector('.sb-lock-banner', { timeout: 15000 });
-ok(true, 'a new lock while the page is open brings the banner back');
+await pg.waitForTimeout(1500);
+ok((await pg.locator('.sb-lock-banner').count()) === 0,
+  'a held lock shows nothing on the published page — viewers are not the audience');
 
 // ---- MCP speaks it ----
 const rpc = async (name, args) => {

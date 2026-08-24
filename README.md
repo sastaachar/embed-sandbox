@@ -142,8 +142,8 @@ the agent doesn't need this README:
 | tool | what it does |
 |---|---|
 | `get_config` / `save_config` | the whole app as one document — the same one the builder and the REST API use. Prefer these for anything beyond a single edit |
-| `connect_cluster` | log the project in to a cluster; saves first, reports whether the check passed, never returns the secret |
-| `list_metadata` | real liveboards/answers/worksheets, so an id is never guessed |
+| `lock_project` / `unlock_project` | announce an edit session; the builder warns any human editing meanwhile |
+| `search_metadata` | real liveboards/answers/worksheets, so an id is never guessed |
 | `get_site` / `set_site` | site config only, merge semantics |
 | `list_pages` / `get_page` / `set_page` / `delete_page` | one page at a time |
 | `get_code` | the real SDK code a page produces |
@@ -634,10 +634,10 @@ remounts. Polling pauses while the tab is hidden and catches up on focus.
 ### The advisory edit lock
 
 An agent editing over MCP announces itself first (`lock_project`, or
-`POST /api/projects/<id>/lock` with the edit token), and every viewer of the
-published page gets a small banner — *"🤖 … is vibe-coding this demo right now —
-the AI overlords may change this page under you"* — while the builder veils the
-canvas with an **Edit anyway** escape hatch. `unlock_project` /
+`POST /api/projects/<id>/lock` with the edit token), and the builder veils the
+canvas — *"… is vibe-coding this demo — your changes might be overwritten by the
+AI overlords"* — with an **Edit anyway** escape hatch. The published page is not
+touched. `unlock_project` /
 `DELETE …/lock` clears it immediately; otherwise it expires 5 minutes after the
 agent's last save (each MCP save refreshes it), so a dead agent cannot wedge a
 demo. It is advisory only: nothing is ever blocked, and the lock state rides on

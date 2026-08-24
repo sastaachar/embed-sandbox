@@ -174,14 +174,14 @@ required for every write; reads are public because sharing is the point.
    browser IS on that VPN, so send them the connect link and ask them to connect from the
    page instead. The connect link also keeps the credential server-side for every auth
    type except TrustedAuthTokenCookieless/TrustedAuthToken, where the page must ship it.
-3. lock_project → announce yourself BEFORE the first edit. Viewers of the published
-   page get a "being vibe-coded right now" banner and the builder warns the human; every
-   save refreshes the lock, and it expires 5 minutes after your last edit anyway.
+3. lock_project → announce yourself BEFORE the first edit. The builder warns the human
+   ("being vibe-coded", with an Edit anyway escape); every save refreshes the lock, and
+   it expires 5 minutes after your last edit anyway.
 4. search_metadata → real liveboard/answer/worksheet ids, never guess ids.
 5. save_config with the whole document: config + pages keyed by path.
 6. get_graph → check pages connect and nothing dangles. get_code → show the human
    real SDK code. get_urls → hand over links.
-7. unlock_project → done editing; the banner disappears immediately.
+7. unlock_project → done editing; the builder warning clears immediately.
 
 Small edits: get_page / set_page (replace, not merge). Whole-document edits:
 get_config / save_config. set_site merges config; save_config and set_page replace.
@@ -196,7 +196,7 @@ get_config / save_config. set_site merges config; save_config and set_page repla
 | tweaking one page | get_page → set_page (replaces the whole page) |
 | site-wide restyle / rename / SDK pin | set_site (merges, so send only what changes) |
 | you need a liveboard/answer/worksheet id | search_metadata — NEVER guess ids |
-| about to make the first edit of a session | lock_project — viewers see the being-vibe-coded banner |
+| about to make the first edit of a session | lock_project — the builder warns the human |
 | done editing | unlock_project — the banner clears immediately |
 | explaining the config to the human | get_code (real SDK code) or get_urls (links) |
 | checking the site hangs together | get_graph (nav + shared-value edges, dangling links) |
@@ -455,9 +455,8 @@ const TOOLS = [
     name: 'lock_project',
     description:
       'Announce that you are editing: take the advisory edit lock BEFORE your first save. ' +
-      'The published page shows viewers a small "being vibe-coded right now" banner and the ' +
-      'builder warns the human (they can still choose Edit anyway) until you unlock_project ' +
-      'or the lock expires — 5 minutes after your last save_config/set_page/set_site, each of ' +
+      'The builder warns any human editing this project (they can still choose Edit anyway) ' +
+      'until you unlock_project or the lock expires — 5 minutes after your last save_config/set_page/set_site, each of ' +
       'which refreshes it. Nothing is ever blocked; this is a courtesy signal. Call it again ' +
       'any time to refresh or to change the holder text.',
     inputSchema: {
@@ -475,8 +474,8 @@ const TOOLS = [
   {
     name: 'unlock_project',
     description:
-      'Release the advisory edit lock when you are done editing, so the "being vibe-coded" ' +
-      'banner disappears for viewers immediately instead of after the 5-minute expiry.',
+      'Release the advisory edit lock when you are done editing, so the builder stops ' +
+      'warning the human immediately instead of after the 5-minute expiry.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   },
   {
@@ -691,7 +690,7 @@ async function callTool(
       return {
         ok: true,
         lock,
-        note: 'Viewers now see the being-vibe-coded banner. It clears on unlock_project, or 5 minutes after your last edit.',
+        note: 'The builder now warns anyone editing this project. It clears on unlock_project, or 5 minutes after your last edit.',
       };
     }
     case 'unlock_project': {

@@ -325,21 +325,6 @@ export function App() {
 
   return (
     <div className="shell on" id="work">
-      {agentLock && !lockDismissed && (
-        <div className="lock-veil" id="lockVeil">
-          <div className="lock-card">
-            <div className="lock-title">🤖 {agentLock.holder} is vibe-coding this demo</div>
-            <p>
-              An AI agent holds the edit lock{agentLock.note ? <> — “{agentLock.note}”</> : null}.
-              Your changes might be overwritten by the AI overlords.
-            </p>
-            <p className="lock-sub">
-              This clears when the agent releases it, or 5 minutes after its last edit.
-            </p>
-            <button id="lockEditAnyway" onClick={() => setLockDismissed(true)}>Edit anyway</button>
-          </div>
-        </div>
-      )}
       <header className="toolbar">
         {/* The title IS the project name — a separate field wrapped the toolbar onto a
             second row, which pushed the canvas down and took drop targets off-screen. */}
@@ -400,6 +385,18 @@ export function App() {
       </header>
 
       <div className="panes">
+        {agentLock && !lockDismissed && (
+          <div className="lock-veil" id="lockVeil">
+            <div className="lock-card">
+              <span className="lock-title">{agentLock.holder} is vibe-coding this demo</span>
+              <span className="lock-sub">
+                {agentLock.note ? <>“{agentLock.note}” — </> : null}
+                your changes might be overwritten by the AI overlords
+              </span>
+              <button id="lockEditAnyway" onClick={() => setLockDismissed(true)}>Edit anyway</button>
+            </div>
+          </div>
+        )}
         <section className="pane palette" id="palette">
           <PageTree
             paths={pages}

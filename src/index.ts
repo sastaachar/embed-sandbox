@@ -250,8 +250,8 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
   }
 
   // /api/projects/:id/lock — the advisory edit lock. An agent acquires it before
-  // editing so the published page and the builder can say "being vibe-coded right
-  // now". Nothing is ever blocked by it; it expires on its own (LOCK_TTL_MS).
+  // editing so the builder can warn a human editor. Nothing is ever blocked by it;
+  // it expires on its own (LOCK_TTL_MS).
   if (segments.length === 4 && segments[3] === 'lock') {
     if (request.method === 'GET') {
       return json({ locked: !!project.lock, lock: project.lock });
