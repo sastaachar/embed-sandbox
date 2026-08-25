@@ -45,30 +45,39 @@ const BLURB: Record<Flavor, string> = {
 
 export function CodePanel(props: { path: string; onClose: () => void }) {
   const [flavor, setFlavor] = useState<Flavor>('react');
+  // The JS flavour has two halves: the code, and the markup it targets.
+  const [part, setPart] = useState<'js' | 'html'>('js');
   const [code, setCode] = useState<string | null>(null);
   // Prism's output, or null when it has not loaded (CDN blocked) — plain text then.
   const [html, setHtml] = useState<string | null>(null);
   const [err, setErr] = useState('');
   const [copied, setCopied] = useState(false);
 
+  const htmlPart = flavor === 'esm' && part === 'html';
+
   useEffect(() => {
     let live = true;
     setCode(null);
     setHtml(null);
     setErr('');
-    fetch(`/api/projects/${PID}/code?path=${encodeURIComponent(props.path)}&flavor=${flavor}`)
+    const q = htmlPart ? '&part=html' : '';
+    fetch(`/api/projects/${PID}/code?path=${encodeURIComponent(props.path)}&flavor=${flavor}${q}`)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error('could not generate the code'))))
       .then((body) => { if (live) setCode(body.code ?? ''); })
       .catch((e) => { if (live) setErr((e as Error).message); });
     return () => { live = false; };
-  }, [flavor, props.path]);
+  }, [flavor, htmlPart, props.path]);
 
   useEffect(() => {
     if (code === null) return;
     let live = true;
     // Prism escapes what it tokenizes, so its output is safe to inject.
     ensurePrism()
-      .then((P) => { if (live) setHtml(P.highlight(code, P.languages.jsx, 'jsx')); })
+      .then((P) => {
+        if (!live) return;
+        const lang = htmlPart ? 'markup' : 'jsx';
+        setHtml(P.highlight(code, P.languages[lang], lang));
+      })
       .catch(() => { /* CDN unreachable: the plain <pre> below already shows the code */ });
     return () => { live = false; };
   }, [code]);
@@ -91,19 +100,25 @@ export function CodePanel(props: { path: string; onClose: () => void }) {
               key={f}
               className={flavor === f ? 'on' : ''}
               id={`flavor-${f}`}
-              onClick={() => setFlavor(f)}
+              onClick={() => { setFlavor(f); setPart('js'); }}
             >
               {LABEL[f]}
             </button>
           ))}
         </div>
+        {flavor === 'esm' && (
+          <div className="seg" id="jsPartSeg">
+            <button className={part === 'js' ? 'on' : ''} id="part-js" onClick={() => setPart('js')}>JS</button>
+            <button className={part === 'html' ? 'on' : ''} id="part-html" onClick={() => setPart('html')}>HTML</button>
+          </div>
+        )}
         <span className="code-path mono">{props.path}</span>
         <span className="sp" />
         <button onClick={copy} disabled={!code}>{copied ? 'Copied' : 'Copy'}</button>
         <button onClick={props.onClose}>Close</button>
       </div>
 
-      <p className="hint">{BLURB[flavor]}</p>
+      <p className="hint">{htmlPart ? 'The elements the JS selectors point at — paste this beside the code.' : BLURB[flavor]}</p>
       {err && <p className="dlg-err">{err}</p>}
 
       {html !== null ? (

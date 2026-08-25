@@ -381,17 +381,6 @@ export function generateCode(
   const pageBody = lines.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd();
   const initBody = initLines.join('\n');
 
-  // What the selectors above point at — real elements, not a promise in prose.
-  const markupLines = [
-    ...embeds.map((spec, i) => (spec.preRender
-      ? `<div id="${varOf.get(i)}" hidden></div>`
-      : `<div id="${varOf.get(i)}"></div>`)),
-    ...buttons.map((b, i) => `<button id="btn-${i + 1}">${String(b.label || 'Button').replace(/[<>&]/g, '')}</button>`),
-    ...[...valueOuts.values()].map((v) => `<span id="${v.id}">${v.placeholder.replace(/[<>&]/g, '')}</span>`),
-  ];
-  const markupComment = markupLines.length
-    ? ['/* The markup this code targets:', ...markupLines.map((l) => `   ${l}`), '*/']
-    : [];
   // The standalone page is the whole app, so it always carries its own init.
   const body = `${initBody}\n\n${pageBody}`;
 
@@ -426,6 +415,7 @@ export function generateCode(
     // EVERY action, not just host events: a button that navigates still needs its
     // handler, and emitting an onClick that points at nothing would not compile.
     let usesNav = false;
+    let usesModalState = false;
     const statementFor = (a: { type: string; params: Record<string, unknown> }): string | null => {
       const pr = a.params;
       switch (a.type) {
@@ -452,9 +442,11 @@ export function generateCode(
         case 'open-url':
           return `window.open(${JSON.stringify(pr.url)}, ${JSON.stringify(pr.target || '_blank')});`;
         case 'open-modal':
-          return `openModal(${JSON.stringify(pr.name)});`;
+          usesModalState = true;
+          return `setModal(${JSON.stringify(pr.name)});`;
         case 'close-modal':
-          return `closeModal();`;
+          usesModalState = true;
+          return `setModal(null);`;
         default:
           return null;
       }
@@ -623,7 +615,7 @@ export function generateCode(
     const readKeys = new Set<string>();
     const writeKeys = new Set<string>();
     const seedFor = new Map<string, string>();
-    walk(page.blocks, (b) => {
+    const collectState = (b: Block) => {
       if (b.type === 'value') {
         readKeys.add(b.key);
         if (b.placeholder) seedFor.set(b.key, b.placeholder);
@@ -646,7 +638,12 @@ export function generateCode(
           }
         }
       }
-    });
+    };
+    walk(page.blocks, collectState);
+    // Modals live in the same file, so their value blocks are page state too.
+    const modalDefs: Record<string, { title?: string; blocks?: Block[] }> =
+      { ...((project.modals as any) ?? {}), ...((page.modals as any) ?? {}) };
+    for (const m of Object.values(modalDefs)) walk(m.blocks, collectState);
     const stateKeys = [...new Set([...readKeys, ...writeKeys])];
     const stateLines = stateKeys.map((k) =>
       `  const [${varName(k)}, set${varName(k).replace(/^./, (c) => c.toUpperCase())}] = useState(${JSON.stringify(seedFor.get(k) ?? '')});`);
@@ -655,6 +652,7 @@ export function generateCode(
     // usesNav is set while building handlers, which happens below — recomputed there.
     const placeholders = [
       ...(readKeys.size ? ['YourStat'] : []),
+      ...(Object.keys(modalDefs).length ? ['YourDialog'] : []),
       ...(project.header?.show !== false ? ['YourHeader'] : []),
       ...(project.footer?.show !== false ? ['YourFooter'] : []),
     ];
@@ -671,6 +669,109 @@ export function generateCode(
       ? [`      <YourFooter text=${JSON.stringify(project.footer?.text ?? '')} />`]
       : [];
 
+    // ---- modals: shown from one piece of page state, defined below in this file ----
+    const modalComp = (name: string) =>
+      `${varName(name).replace(/^./, (ch) => ch.toUpperCase())}Modal`;
+    const modalNames = Object.keys(modalDefs);
+    if (modalNames.length) usesModalState = true;
+    const modalClasses = new Set<string>();
+
+    const modalStmt = (a: { type: string; params: Record<string, any> }): string => {
+      const pr = a.params ?? {};
+      switch (a.type) {
+        case 'close-modal': return 'props.onClose()';
+        case 'open-modal': return `props.onClose() /* then open ${JSON.stringify(pr.name)} from page state */`;
+        case 'nav': usesNav = true; return `goTo(${JSON.stringify(pr.to)})`;
+        case 'open-url': return `window.open(${JSON.stringify(pr.url)}, ${JSON.stringify(pr.target || '_blank')})`;
+        default: return `console.warn(${JSON.stringify(`wire ${a.type} to your modal embed`)})`;
+      }
+    };
+    const modalJsx = (blocks: Block[] | undefined, pad: string, used: Set<string>): string[] => {
+      const out: string[] = [];
+      for (const block of blocks ?? []) {
+        switch (block.type) {
+          case 'heading':
+            out.push(`${pad}<h${block.level || 2}>${escapeJsx(block.text)}</h${block.level || 2}>`);
+            break;
+          case 'text':
+            out.push(`${pad}<p>${escapeJsx(block.text)}</p>`);
+            break;
+          case 'divider':
+            out.push(`${pad}<hr />`);
+            break;
+          case 'spacer':
+            out.push(`${pad}<div style={{ height: ${JSON.stringify(block.size || '24px')} }} />`);
+            break;
+          case 'value':
+            used.add(varName(block.key));
+            out.push(`${pad}<YourStat label={${JSON.stringify(block.label || block.key)}} value={props.${varName(block.key)}} />`);
+            break;
+          case 'buttons': {
+            out.push(`${pad}<div className="buttons">`);
+            for (const item of block.items ?? []) {
+              const stmts = (item.actions ?? []).map((a) => modalStmt(a as any));
+              const onClick = stmts.length
+                ? ` onClick={() => ${stmts.length === 1 ? stmts[0] : `{ ${stmts.join('; ')}; }`}}`
+                : '';
+              out.push(`${pad}  <button${onClick}>${escapeJsx(item.label || 'Button')}</button>`);
+            }
+            out.push(`${pad}</div>`);
+            break;
+          }
+          case 'row': {
+            const cols = (block.columns ?? []).map((cl) => `${cl.span || 1}fr`).join(' ');
+            out.push(`${pad}<div style={{ display: 'grid', gridTemplateColumns: ${JSON.stringify(cols)}, gap: 16 }}>`);
+            for (const col of block.columns ?? []) {
+              out.push(`${pad}  <div>`);
+              out.push(...modalJsx(col.blocks, `${pad}    `, used));
+              out.push(`${pad}  </div>`);
+            }
+            out.push(`${pad}</div>`);
+            break;
+          }
+          case 'embed': {
+            const spec = block.embed;
+            const cls = CLASS_FOR[spec.type];
+            modalClasses.add(cls);
+            const cfg = embedConfigFor(spec, project, null, true) as Record<string, unknown>;
+            out.push(`${pad}<${cls}`);
+            if (Object.keys(project.embedDefaults ?? {}).length) out.push(`${pad}  {...embedDefaults}`);
+            for (const [k, v] of Object.entries(cfg)) out.push(...jsxProp(`${pad}  `, k, v));
+            if (spec.embedEventHandlers?.length) {
+              out.push(`${pad}  {/* embedEventHandlers: wire via on<Event> props, as on the page */}`);
+            }
+            out.push(`${pad}/>`);
+            break;
+          }
+          default:
+            break;
+        }
+      }
+      return out;
+    };
+
+    const modalRenderLines: string[] = [];
+    const modalComponentDefs: string[] = [];
+    for (const name of modalNames) {
+      const def = modalDefs[name];
+      const used = new Set<string>();
+      const body = modalJsx(def.blocks, '      ', used);
+      const pass = [...used].map((k) => ` ${k}={${k}}`).join('');
+      modalRenderLines.push(
+        `      {modal === ${JSON.stringify(name)} && <${modalComp(name)} onClose={() => setModal(null)}${pass} />}`,
+      );
+      modalComponentDefs.push(
+        '',
+        `function ${modalComp(name)}(props) {`,
+        `  return (`,
+        `    <YourDialog title={${JSON.stringify(def.title || name)}} onClose={props.onClose}>`,
+        ...body,
+        `    </YourDialog>`,
+        `  );`,
+        `}`,
+      );
+    }
+
     return [
       `// npm install @thoughtspot/visual-embed-sdk@${version}`,
       ...(() => {
@@ -681,7 +782,7 @@ export function generateCode(
              `// import { ${all.join(', ')} } from './components';`]
           : [];
       })(),
-      ...(stateKeys.length ? [`import { useState } from 'react';`] : []),
+      ...(stateKeys.length || usesModalState ? [`import { useState } from 'react';`] : []),
       '',
       `// ─── once per app, at bootstrap — NOT per route ───`,
       `import { ${initImports.join(', ')} } from '@thoughtspot/visual-embed-sdk';`,
@@ -689,8 +790,8 @@ export function generateCode(
       initBody,
       '',
       `// ─── ${path} ───`,
-      ...(hasEmbeds
-        ? [`import { ${[...reactImports, ...preRenderImports].join(', ')}${needsHostEvent ? `, HostEvent` : ''} } from '${pkg}';`]
+      ...(hasEmbeds || modalClasses.size
+        ? [`import { ${[...new Set([...reactImports, ...modalClasses]), ...preRenderImports].join(', ')}${needsHostEvent ? `, HostEvent` : ''} } from '${pkg}';`]
         : [`// No embed block on this page yet — plain React. Add one and its`,
            `// component (and the matching SDK import) appears here.`]),
       '',
@@ -698,6 +799,7 @@ export function generateCode(
       '',
       `export function ${componentName(path)}() {`,
       ...stateLines,
+      ...(usesModalState ? [`  const [modal, setModal] = useState(null);`] : []),
       ...refs,
       ...(handlers.length ? ['', ...handlers, ''] : []),
       `  return (`,
@@ -712,10 +814,12 @@ export function generateCode(
       `      <main>`,
       ...jsxLines.map((l) => `  ${l}`),
       `      </main>`,
+      ...modalRenderLines,
       ...footerJsx,
       `    </>`,
       `  );`,
       `}`,
+      ...modalComponentDefs,
       '',
     ].join('\n');
   }
@@ -728,7 +832,6 @@ export function generateCode(
         `// Assumes init() has already been called once at app bootstrap.`,
         ...(hasEmbeds ? [`import { ${pageImports.join(', ')} } from '${pkg}';`] : []),
         '',
-        ...(markupComment.length ? [...markupComment, ''] : []),
         `// ${path}`,
         pageBody,
         '',
@@ -747,7 +850,6 @@ export function generateCode(
       `// ─── ${path} ───`,
       ...(hasEmbeds ? [`import { ${pageImports.join(', ')} } from '${pkg}';`] : []),
       '',
-      ...(markupComment.length ? [...markupComment, ''] : []),
       pageBody,
       '',
     ].join('\n');
@@ -819,4 +921,35 @@ ${body
 </body>
 </html>
 `;
+}
+
+/**
+ * The markup a page's JavaScript flavour targets, as real copyable HTML — shown as the
+ * HTML half of the JS code view rather than buried in a comment.
+ */
+export function generateMarkup(page: PageConfig, path: string): string {
+  const embeds = embedsIn(page);
+  const buttons = buttonsIn(page);
+  const visible = embeds.filter((e) => !e.preRender);
+  const lines: string[] = [`<!-- the markup ${path}'s JavaScript targets -->`];
+  let pre = 0;
+  let vis = 0;
+  embeds.forEach((spec) => {
+    if (spec.preRender) {
+      const id = embeds.filter((e) => e.preRender).length === 1 ? 'preRenderEmbed' : `preRenderEmbed${++pre}`;
+      lines.push(`<div id="${id}" hidden></div>`);
+    } else {
+      const id = visible.length === 1 ? 'embed' : `embed${++vis}`;
+      lines.push(`<div id="${id}"></div>`);
+    }
+  });
+  buttons.forEach((b, i) => {
+    lines.push(`<button id="btn-${i + 1}">${String(b.label || 'Button').replace(/[<>&]/g, '')}</button>`);
+  });
+  walk(page.blocks, (b) => {
+    if (b.type === 'value') {
+      lines.push(`<span id="out-${varName(b.key)}">${String(b.placeholder ?? '—').replace(/[<>&]/g, '')}</span>`);
+    }
+  });
+  return lines.join('\n') + '\n';
 }

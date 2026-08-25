@@ -1615,6 +1615,8 @@
 
   function codeOverlay() {
     var flavor = 'react';
+    // The JS flavour has two halves: the code, and the markup it targets.
+    var part = 'js';
     var root = el('div', 'sb-code-overlay');
     root.hidden = true;
     var head = el('div', 'sb-code-head');
@@ -1622,6 +1624,11 @@
     var btnReact = el('button', null, 'React');
     var btnJs = el('button', null, 'JavaScript');
     seg.appendChild(btnReact); seg.appendChild(btnJs);
+    var partSeg = el('div', 'sb-code-seg');
+    partSeg.hidden = true;
+    var btnJsCode = el('button', null, 'JS');
+    var btnHtml = el('button', null, 'HTML');
+    partSeg.appendChild(btnJsCode); partSeg.appendChild(btnHtml);
     var pathEl = el('span', 'sb-code-path');
     var copyBtn = el('button', null, 'Copy');
     var forkA = el('a', 'sb-code-fork', 'Fork & edit');
@@ -1629,7 +1636,7 @@
     forkA.target = '_blank';
     forkA.rel = 'noopener';
     var closeBtn = el('button', null, 'Close');
-    head.appendChild(seg); head.appendChild(pathEl);
+    head.appendChild(seg); head.appendChild(partSeg); head.appendChild(pathEl);
     var spacer = el('span'); spacer.style.flex = '1'; head.appendChild(spacer);
     head.appendChild(copyBtn); head.appendChild(forkA); head.appendChild(closeBtn);
     var pre = el('pre', 'sb-code-pre');
@@ -1640,10 +1647,15 @@
     function load() {
       btnReact.className = flavor === 'react' ? 'on' : '';
       btnJs.className = flavor === 'esm' ? 'on' : '';
+      partSeg.hidden = flavor !== 'esm';
+      btnJsCode.className = part === 'js' ? 'on' : '';
+      btnHtml.className = part === 'html' ? 'on' : '';
+      var htmlPart = flavor === 'esm' && part === 'html';
       var path = currentPath();
       pathEl.textContent = path;
       pre.textContent = 'generating…';
-      fetch('/api/projects/' + M.projectId + '/code?path=' + encodeURIComponent(path) + '&flavor=' + flavor)
+      fetch('/api/projects/' + M.projectId + '/code?path=' + encodeURIComponent(path) +
+          '&flavor=' + flavor + (htmlPart ? '&part=html' : ''))
         .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('could not generate')); })
         .then(function (body) {
           raw = body.code || '';
@@ -1651,13 +1663,16 @@
           // Colour is an upgrade, never a requirement: if the CDN is unreachable the
           // plain text stands.
           ensurePrism().then(function () {
-            pre.innerHTML = window.Prism.highlight(raw, window.Prism.languages.jsx, 'jsx');
+            var lang = htmlPart ? 'markup' : 'jsx';
+            pre.innerHTML = window.Prism.highlight(raw, window.Prism.languages[lang], lang);
           }, function () { /* offline: plain text already shown */ });
         })
         .catch(function (err) { pre.textContent = String(err.message || err); });
     }
-    btnReact.onclick = function () { flavor = 'react'; load(); };
+    btnReact.onclick = function () { flavor = 'react'; part = 'js'; load(); };
     btnJs.onclick = function () { flavor = 'esm'; load(); };
+    btnJsCode.onclick = function () { part = 'js'; load(); };
+    btnHtml.onclick = function () { part = 'html'; load(); };
     copyBtn.onclick = function () {
       navigator.clipboard.writeText(raw).then(function () {
         copyBtn.textContent = 'Copied';

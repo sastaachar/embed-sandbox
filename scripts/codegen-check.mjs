@@ -145,9 +145,13 @@ ok(ev.includes('EmbedEvent'), 'and imports EmbedEvent for them');
 ok(ev.includes('document.querySelector("#out-status").textContent = "✓ ready";'),
   'a literal set writes into the value span');
 ok(ev.includes('payload.data'), 'a payload-path set reads out of the payload');
-ok(ev.includes('/* The markup this code targets:'), 'esm shows the mini markup it targets');
-ok(ev.includes('<span id="out-status">Loading…</span>'), 'including the value span with its placeholder');
-ok(ev.includes('<button id="btn-2">Home</button>'), 'and every button with its real id');
+ok(!ev.includes('/* The markup'), 'esm no longer buries the markup in a comment');
+const evHtml = await code('path=/events&flavor=esm&part=html');
+ok(evHtml.includes('<span id="out-status">Loading…</span>'),
+  'part=html returns the value span with its placeholder');
+ok(evHtml.includes('<button id="btn-2">Home</button>'), 'and every button with its real id');
+ok(evHtml.includes('<div id="embed"></div>'), 'and the embed container');
+ok(!evHtml.includes('fetch('), 'as pure markup, no JS in it');
 ok(ev.includes('location.href = "/"'), 'nav buttons are wired too, not skipped');
 ok(ev.includes('.then((r) => { document.querySelector("#out-status")'),
   'a HostEvent with store lands the response in its span');
@@ -155,6 +159,29 @@ const evCdn = await code('path=/events');
 ok(evCdn.includes('<span id="out-status">Loading…</span>'),
   'cdn renders the value span as real HTML');
 ok(evCdn.includes('.on(EmbedEvent.Load'), 'cdn wires the handlers as well');
+
+// ---- react: modals are components below the page, in the same file ----
+await put('/dlg', { blocks: [
+  { type: 'buttons', items: [{ label: 'Open detail', actions: [{ type: 'open-modal', params: { name: 'detail' } }] }] },
+], modals: {
+  detail: { title: 'Answer detail', blocks: [
+    { type: 'value', key: 'answerId', label: 'Session' },
+    { type: 'embed', embed: { type: 'search', config: { dataSource: 'ws-1' } } },
+    { type: 'buttons', items: [{ label: 'Close', actions: [{ type: 'close-modal', params: {} }] }] },
+  ] },
+} });
+const dlg = await code('path=/dlg&flavor=react');
+ok(dlg.includes('const [modal, setModal] = useState(null);'), 'react: one piece of state shows modals');
+ok(dlg.includes('setModal("detail")'), 'the open-modal button sets it');
+ok(dlg.includes('{modal === "detail" && <DetailModal onClose={() => setModal(null)} answerId={answerId} />}'),
+  'the page renders the modal from that state, passing the values it reads');
+ok(dlg.includes('function DetailModal(props)'), 'the modal is a component below, same file');
+ok(dlg.includes('<YourDialog title={"Answer detail"}'), 'wrapped in your own dialog shell');
+ok(dlg.includes('value={props.answerId}'), 'its value block reads the passed prop');
+ok(dlg.includes('onClick={() => props.onClose()}'), 'its Close button closes via the prop');
+ok(dlg.includes('SearchEmbed') && dlg.includes("from '@thoughtspot/visual-embed-sdk/react'"),
+  'a modal-only embed still gets its SDK import');
+ok(dlg.includes('YourDialog') && /YourDialog.*are YOURS/.test(dlg), 'YourDialog is named as yours to build');
 
 // ---- trusted auth: init() must carry a getAuthToken, or the SDK refuses it ----
 const mk = async (authBlock) => {

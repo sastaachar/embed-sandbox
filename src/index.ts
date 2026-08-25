@@ -16,7 +16,7 @@ import {
   verifyToken,
   type Env,
 } from './common/db';
-import { type Flavor, generateCode } from './common/codegen';
+import { type Flavor, generateCode, generateMarkup } from './common/codegen';
 import { buildGraph } from './common/graph';
 import { publicUrls } from './common/urls';
 import { renderEditor } from './builder/editor';
@@ -329,6 +329,10 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
     }
     const page = await getPage(env, projectId, path);
     if (!page) return json({ error: 'page not found' }, 404);
+    // The JS flavour's markup half: real copyable HTML, its own view in the switcher.
+    if (url.searchParams.get('part') === 'html') {
+      return json({ path, flavor: flavourParam, part: 'html', code: generateMarkup(page.config, path) });
+    }
     const code = generateCode(
       effectiveProject(project.config),
       page.config,

@@ -1,4 +1,4 @@
-import { generateCode } from './codegen';
+import { generateCode, generateMarkup } from './codegen';
 import { buildGraph } from './graph';
 import { publicUrls } from './urls';
 import { effectiveProject, resolveTheme, tsVarsFor } from './theme';
@@ -424,6 +424,11 @@ const TOOLS = [
           description:
             'esm only, default true. init() is global to the app, not per page — pass false to get just the page code when the app already calls init() once at bootstrap.',
         },
+        part: {
+          type: 'string',
+          enum: ['code', 'html'],
+          description: '"html" returns the markup the esm flavour targets (containers, buttons, value spans) instead of the code.',
+        },
       },
       required: ['path'],
       additionalProperties: false,
@@ -743,6 +748,9 @@ async function callTool(
       if (!project) throw new ValidationError('project no longer exists');
       const page = await getPage(env, projectId, path);
       if (!page) throw new ValidationError(`no page at ${path}`);
+      if (args.part === 'html') {
+        return { path, part: 'html', code: generateMarkup(page.config, path) };
+      }
       return {
         path,
         flavor,
