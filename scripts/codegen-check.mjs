@@ -203,10 +203,11 @@ const mk = async (authBlock) => {
 };
 const credCode = await mk({ tokenSource: 'credentials', username: 'demo', secret: 's3cret', secretType: 'password' });
 ok(credCode.includes('getAuthToken:'), 'trusted auth + credentials: init() carries getAuthToken');
-ok(credCode.includes('/api/rest/2.0/auth/token/full') && credCode.includes('"username":"demo"'),
-  'and it mints from the cluster the way the runtime does');
-ok(credCode.includes('// Must return a valid token for the embed user.'),
-  'with one line of comment, not a sermon');
+ok(credCode.includes('/api/rest/2.0/auth/token/full'), 'against the cluster that mints');
+ok(credCode.includes('"username":"<your username>"') && credCode.includes('"password":"<your password>"'),
+  'with PLACEHOLDER credentials — you fill in your own');
+ok(!credCode.includes('s3cret') && !credCode.includes('"demo"'),
+  'and the stored credential never appears in publicly-served code');
 const bareCode = await mk(null);
 ok(bareCode.includes('getAuthToken:') && bareCode.includes('/your-token-endpoint'),
   'trusted auth with no token source: a stub getAuthToken pointing at your backend');

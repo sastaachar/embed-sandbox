@@ -174,16 +174,21 @@ export function generateCode(
       ];
     }
     if (auth?.tokenSource === 'credentials') {
+      // Placeholders, never the stored credential: this code is served publicly at
+      // /p/<id>/ through the ‹/› overlay, and nobody should paste a real password
+      // out of a snippet anyway.
+      const secretKey = auth.secretType === 'secret_key' ? 'secret_key' : 'password';
       const mintBody: Record<string, unknown> = {
-        username: auth.username,
+        username: '<your username>',
+        [secretKey]: `<your ${secretKey === 'secret_key' ? 'secret key' : 'password'}>`,
         validity_time_in_sec: auth.validitySeconds ?? 300,
+        ...(auth.objectId ? { object_id: auth.objectId } : {}),
       };
-      mintBody[auth.secretType === 'secret_key' ? 'secret_key' : 'password'] = auth.secret;
-      if (auth.objectId) mintBody.object_id = auth.objectId;
       const mintUrl = host.replace(/\/+$/, '') +
         (auth.objectId ? '/api/rest/2.0/auth/token/object' : '/api/rest/2.0/auth/token/full');
       return [
-        `  // Must return a valid token for the embed user.`,
+        `  // Must return a valid token for the embed user. Fill in your own credentials`,
+        `  // — better, mint server-side so they never reach the browser.`,
         `  getAuthToken: () =>`,
         `    fetch(${JSON.stringify(mintUrl)}, {`,
         `      method: "POST",`,

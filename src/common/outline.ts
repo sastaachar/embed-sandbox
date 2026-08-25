@@ -289,7 +289,9 @@ export function buildOutline(project: ProjectConfig, page: PageConfig, path: str
     props: {
       thoughtSpotHost: project.thoughtSpotHost,
       authType: project.authType ?? 'None',
-      ...(auth ? { auth } : {}),
+      // The secret is redacted even though config is public: an outline is something
+      // you screen-share.
+      ...(auth ? { auth: { ...auth, ...(auth.secret ? { secret: '<redacted>' } : {}) } } : {}),
     },
     // The token fetch is generated from config, so show the function it becomes.
     handlers: auth
@@ -298,7 +300,12 @@ export function buildOutline(project: ProjectConfig, page: PageConfig, path: str
             name: 'getAuthToken',
             source: auth.tokenSource === 'proxy'
               ? `() => fetch("/api/projects/<projectId>/token")\n  .then((r) => r.json())\n  .then((b) => b.token)`
-              : `() => fetch(${JSON.stringify(auth.tokenEndpoint)}` +
+              : auth.tokenSource === 'credentials'
+                ? `() => fetch("${String(project.thoughtSpotHost ?? '').replace(/\/+$/, '')}/api/rest/2.0/auth/token/full", {\n` +
+                  `  method: "POST",\n` +
+                  `  body: JSON.stringify({ username: "<your username>", password: "<your password>" }),\n` +
+                  `})\n  .then((r) => r.json())\n  .then((b) => b.token)`
+                : `() => fetch(${JSON.stringify(auth.tokenEndpoint)}` +
                 (auth.tokenMethod && auth.tokenMethod !== 'GET'
                   ? `, { method: ${JSON.stringify(auth.tokenMethod)} }`
                   : '') +
