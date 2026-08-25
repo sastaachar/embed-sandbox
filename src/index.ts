@@ -578,12 +578,27 @@ overflow-x:auto;font:12.5px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;col
 code.inline{background:var(--code);border:1px solid var(--line);border-radius:5px;padding:1px 5px;font-size:.9em}
 .mini{margin-top:14px;text-align:center}
 .mini button{background:none;border:0;color:var(--accent);padding:6px;font-size:.88rem}
+.mine-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--line)}
+.mine-row:first-of-type{border-top:0}
+.mine-name{flex:1;min-width:0}
+.mine-name b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mine-name code{font-size:11px;color:var(--muted)}
+.mine-row a{font-size:.85rem;color:var(--accent);text-decoration:none;white-space:nowrap}
+.mine-row a:hover{text-decoration:underline}
+.mine-x{background:none;border:0;color:var(--muted);cursor:pointer;font-size:12px;padding:2px 6px}
+.mine-x:hover{color:var(--danger)}
 </style></head><body><main>
 <span class="badge">ThoughtSpot · Visual Embed SDK</span>
 <h1>embed-sandbox</h1>
 <p class="lede">Spin up a shareable ThoughtSpot embed demo in one click. You get a live site,
 a visual builder, and an MCP endpoint an AI agent can edit — all driven by one JSON document.
 No build step, no deploy.</p>
+
+<section class="card" id="mineCard" hidden style="margin-bottom:18px">
+  <h2>Your builds</h2>
+  <p class="sub">Projects this browser holds an edit token for.</p>
+  <div id="mineList"></div>
+</section>
 
 <section class="card" id="createCard">
   <h2>Create a project</h2>
@@ -613,7 +628,7 @@ No build step, no deploy.</p>
   <div class="kv">
     <div class="k">Edit token — shown once</div>
     <div class="copyrow"><code id="tok"></code><button data-copy="tok">Copy</button></div>
-    <div class="warn">Save this now. It authorises edits and is never shown again.</div>
+    <div class="warn">Save this now — it authorises edits and is never shown again. (Also remembered in this browser, under “Your builds”.)</div>
   </div>
   <div class="actions">
     <a id="openBuilder" class="btn primary" target="_blank" rel="noopener">Open the builder →</a>
@@ -662,6 +677,11 @@ No build step, no deploy.</p>
         $('mcp').textContent = d.mcpUrl;
         $('openBuilder').href = d.builderUrl;
         $('openSite').href = d.siteUrl;
+        try {
+          localStorage.setItem('sb.tok.' + d.projectId, d.editToken);
+          localStorage.setItem('sb.name.' + d.projectId, body.name);
+        } catch (e) { /* private mode: the token stays shown-once only */ }
+        renderMine();
         $('createCard').hidden = true;
         $('doneCard').hidden = false;
         window.scrollTo(0, 0);
@@ -677,6 +697,49 @@ No build step, no deploy.</p>
       var was = b.textContent; b.textContent = 'Copied'; setTimeout(function(){ b.textContent = was; }, 1300);
     });
   });
+
+  function myBuilds(){
+    var out = [];
+    try {
+      for (var n = 0; n < localStorage.length; n++) {
+        var k = localStorage.key(n);
+        if (k && k.indexOf('sb.tok.') === 0) {
+          var id = k.slice(7);
+          var name = '';
+          try { name = localStorage.getItem('sb.name.' + id) || ''; } catch (e2) {}
+          out.push({ id: id, name: name || id });
+        }
+      }
+    } catch (e) {}
+    out.sort(function(a, b){ return a.name.localeCompare(b.name); });
+    return out;
+  }
+  function renderMine(){
+    var list = myBuilds();
+    var box = $('mineList');
+    while (box.firstChild) box.removeChild(box.firstChild);
+    list.forEach(function(p){
+      var row = document.createElement('div'); row.className = 'mine-row';
+      var nm = document.createElement('div'); nm.className = 'mine-name';
+      var b = document.createElement('b'); b.textContent = p.name;
+      var idc = document.createElement('code'); idc.textContent = p.id;
+      nm.appendChild(b); nm.appendChild(idc); row.appendChild(nm);
+      var build = document.createElement('a');
+      build.href = '/build/' + p.id; build.textContent = 'Builder';
+      var live = document.createElement('a');
+      live.href = '/p/' + p.id + '/'; live.target = '_blank'; live.rel = 'noopener'; live.textContent = 'Live site';
+      var x = document.createElement('button'); x.className = 'mine-x';
+      x.textContent = '\u2715'; x.title = 'Forget this build (removes the token from this browser)';
+      x.addEventListener('click', function(){
+        try { localStorage.removeItem('sb.tok.' + p.id); localStorage.removeItem('sb.name.' + p.id); } catch (e) {}
+        renderMine();
+      });
+      row.appendChild(build); row.appendChild(live); row.appendChild(x);
+      box.appendChild(row);
+    });
+    $('mineCard').hidden = list.length === 0;
+  }
+  renderMine();
 
   $('again').addEventListener('click', function(){
     $('doneCard').hidden = true; $('createCard').hidden = false;

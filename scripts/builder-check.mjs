@@ -59,11 +59,12 @@ await pg.fill('#token', TOKEN);
 await pg.click('#gateForm button');
 await pg.waitForSelector('#work.on', { timeout: 10000 });
 ok(true, 'correct token opens the builder');
-ok(await pg.evaluate(() => localStorage.length === 1), 'the token is remembered by default, per project');
-ok(await pg.evaluate(() => Object.keys(localStorage)[0].endsWith(window.__PID)),
-  'under a per-project key, so one token cannot unlock another');
+ok(await pg.evaluate(() => localStorage.getItem('sb.tok.' + window.__PID) !== null),
+  'the token is remembered by default, under a per-project key');
+ok(await pg.evaluate(() => localStorage.getItem('sb.name.' + window.__PID) !== null),
+  'and the name rides along, so the landing page can list this build');
 await pg.click('#forget');
-ok(await pg.evaluate(() => localStorage.length === 0), 'Forget token clears it');
+ok(await pg.evaluate(() => localStorage.length === 0), 'Forget token clears both');
 
 // ---- canvas reflects the saved page ----
 await pg.waitForSelector('.card', { timeout: 8000 });

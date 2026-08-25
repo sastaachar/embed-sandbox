@@ -19,6 +19,15 @@ import spec from './spec.json';
 const PALETTE = (spec as any).palette as Array<{ label: string; chooseType?: boolean; block: Block }>;
 const REMEMBER_KEY = `sb.tok.${PID}`;
 
+const NAME_KEY = `sb.name.${PID}`;
+
+/** The landing page lists this browser's builds from sb.tok.* + sb.name.*. */
+function syncSavedName(name: string | undefined) {
+  try {
+    if (localStorage.getItem(REMEMBER_KEY)) localStorage.setItem(NAME_KEY, name || PID);
+  } catch { /* private mode */ }
+}
+
 /** prerender-1, -2, … skipping any the document already uses. */
 function nextPreRenderId(doc: Doc): string {
   const taken = new Set<string>();
@@ -85,6 +94,7 @@ export function App() {
     const d = await loadDoc();
     if (typeof d.updatedAt === 'number') seenVersion.current = d.updatedAt;
     doc.current = d;
+    syncSavedName(d.config.name);
     const paths = Object.keys(d.pages).sort();
     if (!paths.includes(path)) b.setPath(paths[0] || '/');
     setSel(null);
@@ -185,6 +195,7 @@ export function App() {
       d.config = saved.config;
       b.setDirty(false);
       setStatus('saved', 'ok');
+      syncSavedName(doc.current?.config.name);
       return saved;
     } catch (err) {
       setStatus((err as Error).message, 'err');
@@ -405,7 +416,7 @@ export function App() {
           id="forget"
           title="Remove this project's edit token from this browser"
           onClick={() => {
-            try { localStorage.removeItem(REMEMBER_KEY); } catch { /* private mode */ }
+            try { localStorage.removeItem(REMEMBER_KEY); localStorage.removeItem(NAME_KEY); } catch { /* private mode */ }
             setStatus('token forgotten — this browser will ask again', 'ok');
           }}
         >
@@ -720,7 +731,7 @@ function Gate({ onOpen }: { onOpen: (token: string, remember: boolean) => Promis
     if (!stored) { setChecking(false); return; }
     void (async () => {
       if (await verifyToken(stored!)) { await onOpen(stored!, false); }
-      else { try { localStorage.removeItem(REMEMBER_KEY); } catch { /* ignore */ } }
+      else { try { localStorage.removeItem(REMEMBER_KEY); localStorage.removeItem(NAME_KEY); } catch { /* ignore */ } }
       setChecking(false);
     })();
   }, [onOpen]);
