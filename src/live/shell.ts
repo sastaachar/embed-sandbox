@@ -3,7 +3,7 @@ import type { Theme } from '../common/schema';
 import { resolveTheme } from '../common/theme';
 import { SDK_CDN_ORIGIN, sdkUrl } from '../common/sdkUrl';
 
-export const RUNTIME_VERSION = '30';
+export const RUNTIME_VERSION = '31';
 
 const THEME_VAR: Record<keyof Theme, string> = {
   colorPrimary: '--sb-primary',
@@ -244,6 +244,10 @@ export function renderNotFound(message: string): string {
 <title>Not found</title>
 <style>:root{${themeVars(undefined)}}${BASE_CSS}
 .sb-center{flex:1;display:flex;align-items:center;justify-content:center;padding:40px}
+/* The hidden ATTRIBUTE must beat any display rule above — a display:flex/inline-flex
+   on the same element silently wins otherwise, which has hidden a Close button and
+   shown a JS/HTML toggle in React mode. Last in the sheet, so ties go to it. */
+[hidden]{display:none}
 </style></head>
 <body><div class="sb-center"><div class="sb-note"><strong>Not found</strong>${escapeHtml(message)}</div></div></body></html>`;
 }
