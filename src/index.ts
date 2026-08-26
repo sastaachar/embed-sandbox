@@ -681,7 +681,8 @@ No build step, no deploy.</p>
         $('openSite').href = d.siteUrl;
         try {
           localStorage.setItem('sb.tok.' + d.projectId, d.editToken);
-          localStorage.setItem('sb.name.' + d.projectId, body.name);
+          var typed = ($('name').value || '').trim();
+          if (typed) localStorage.setItem('sb.name.' + d.projectId, typed);
         } catch (e) { /* private mode: the token stays shown-once only */ }
         renderMine();
         $('createCard').hidden = true;
@@ -709,11 +710,12 @@ No build step, no deploy.</p>
           var id = k.slice(7);
           var name = '';
           try { name = localStorage.getItem('sb.name.' + id) || ''; } catch (e2) {}
-          out.push({ id: id, name: name || id });
+          if (name === id) name = '';
+          out.push({ id: id, name: name });
         }
       }
     } catch (e) {}
-    out.sort(function(a, b){ return a.name.localeCompare(b.name); });
+    out.sort(function(a, b){ return (a.name || a.id).localeCompare(b.name || b.id); });
     return out;
   }
   function renderMine(){
@@ -723,7 +725,9 @@ No build step, no deploy.</p>
     list.forEach(function(p){
       var row = document.createElement('div'); row.className = 'mine-row';
       var nm = document.createElement('div'); nm.className = 'mine-name';
-      var b = document.createElement('b'); b.textContent = p.name;
+      var b = document.createElement('b');
+      b.textContent = p.name || 'Untitled';
+      if (!p.name) b.style.opacity = '.6';
       var idc = document.createElement('code'); idc.textContent = p.id;
       nm.appendChild(b); nm.appendChild(idc); row.appendChild(nm);
       var build = document.createElement('a');

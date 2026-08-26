@@ -3,7 +3,7 @@ import type { Theme } from '../common/schema';
 import { resolveTheme } from '../common/theme';
 import { SDK_CDN_ORIGIN, sdkUrl } from '../common/sdkUrl';
 
-export const RUNTIME_VERSION = '34';
+export const RUNTIME_VERSION = '35';
 
 const THEME_VAR: Record<keyof Theme, string> = {
   colorPrimary: '--sb-primary',
@@ -175,7 +175,7 @@ h1{font-size:1.4rem}
    shown a JS/HTML toggle in React mode. Last in the sheet, so ties go to it. */
 .sb-set-fab{position:fixed;right:18px;bottom:70px;z-index:90;width:44px;height:44px;
 border-radius:50%;border:1px solid var(--sb-border);background:var(--sb-surface);
-color:var(--sb-text);font:16px/1 system-ui,sans-serif;cursor:pointer;
+color:var(--sb-text);font:22px/1 system-ui,sans-serif;cursor:pointer;
 box-shadow:0 4px 14px rgba(15,18,45,.18)}
 .sb-set-fab.sb-alone{bottom:18px}
 .sb-set-fab:hover{border-color:var(--sb-primary);color:var(--sb-primary)}

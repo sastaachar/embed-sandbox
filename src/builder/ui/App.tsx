@@ -21,10 +21,17 @@ const REMEMBER_KEY = `sb.tok.${PID}`;
 
 const NAME_KEY = `sb.name.${PID}`;
 
-/** The landing page lists this browser's builds from sb.tok.* + sb.name.*. */
+/**
+ * The landing page lists this browser's builds from sb.tok.* + sb.name.*. Only a REAL
+ * name is stored: falling back to the id wrote the id in as the name, and the list then
+ * showed it twice.
+ */
 function syncSavedName(name: string | undefined) {
   try {
-    if (localStorage.getItem(REMEMBER_KEY)) localStorage.setItem(NAME_KEY, name || PID);
+    if (!localStorage.getItem(REMEMBER_KEY)) return;
+    const trimmed = (name || '').trim();
+    if (trimmed && trimmed !== PID) localStorage.setItem(NAME_KEY, trimmed);
+    else localStorage.removeItem(NAME_KEY);
   } catch { /* private mode */ }
 }
 
