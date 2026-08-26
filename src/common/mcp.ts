@@ -134,6 +134,10 @@ Call get_site to see resolvedTheme and tsVars.
 
 sdkVersion is resolved from the jsDelivr CDN at page load, so any published
 version works with no rebuild — use an exact version like "1.51.0", or "latest".
+An UNRELEASED build works too: "pr:641" (a pkg.pr.new PR, follows its latest commit)
+or "pr:<commit>" (immutable). This site unwraps that tarball and serves
+dist/tsembed.js itself, so the published page loads it like any other version. A
+pkg.pr.new URL pasted from package.json is accepted and stored as the same pin.
 authType: None | EmbeddedSSO | Cookieless | TrustedAuthTokenCookieless.
 embedDefaults is merged underneath every page's embed config.`;
 

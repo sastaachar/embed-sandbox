@@ -24,6 +24,7 @@ import { renderBuilder } from './builder/shell';
 import { renderForkPage } from './builder/fork';
 import { buildOutline } from './common/outline';
 import { handleMcp, manualMarkdown } from './common/mcp';
+import { TarballError, fileFromTarball } from './common/tarball';
 import { TsRestError, mintToken } from './common/tsrest';
 import {
   ValidationError,
@@ -33,7 +34,7 @@ import {
   type PageConfig,
 } from './common/schema';
 import { RUNTIME_VERSION, buildManifest, renderNotFound, renderShell } from './live/shell';
-import { sdkUrl } from './common/sdkUrl';
+import { prTarballUrl, sdkUrl } from './common/sdkUrl';
 import { contrastOf, effectiveProject, resolveTheme, tsVarsFor } from './common/theme';
 
 const MAX_PAGES_PER_PROJECT = 200;
@@ -340,6 +341,7 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
       flavourParam as Flavor,
       url.searchParams.get('init') !== '0',
       `${url.origin}/api/projects/${projectId}/token`,
+      url.origin,
     );
 
     if (url.searchParams.get('download') === '1') {
@@ -903,6 +905,49 @@ export default {
 
       if (segments[0] === 'api') {
         return await handleApi(request, env, url);
+      }
+
+      // /sdk/pr/<ref>/tsembed.js — the SDK straight off a PR or commit. pkg.pr.new
+      // publishes a continuous release per PR as an npm TARBALL, which no <script src>
+      // can load, so this does what `npm i <that url>` does: fetch, gunzip, take
+      // dist/tsembed.js. Only pkg.pr.new is fetched — this is not an open proxy.
+      if (segments[0] === 'sdk') {
+        if (segments[1] !== 'pr' || !segments[2] || segments[3] !== 'tsembed.js') {
+          return json({ error: 'use /sdk/pr/<pr-number-or-commit>/tsembed.js' }, 404);
+        }
+        const ref = segments[2];
+        if (!/^[A-Za-z0-9._-]{1,64}$/.test(ref)) return json({ error: 'malformed ref' }, 400);
+        // A PR number follows the PR's latest commit, so it may only be cached briefly.
+        // A commit ref can never change.
+        const immutable = !/^\d+$/.test(ref);
+        const cache = caches.default;
+        const cacheKey = new Request(`https://sdk.invalid/pr/${ref}/tsembed.js`, { method: 'GET' });
+        const hit = await cache.match(cacheKey);
+        if (hit) return hit;
+        try {
+          const file = await fileFromTarball(prTarballUrl(ref), 'package/dist/tsembed.js');
+          const response = new Response(file, {
+            headers: {
+              'content-type': 'application/javascript; charset=utf-8',
+              'cache-control': immutable
+                ? 'public, max-age=3600, s-maxage=31536000, immutable'
+                : 'public, max-age=0, s-maxage=300, must-revalidate',
+              'x-sdk-source': prTarballUrl(ref),
+              'access-control-allow-origin': '*',
+            },
+          });
+          await cache.put(cacheKey, response.clone());
+          return response;
+        } catch (err) {
+          const msg = err instanceof TarballError ? err.message : 'could not unpack that SDK build';
+          if (!(err instanceof TarballError)) console.error('[sdk]', err);
+          // JS, not JSON: this is loaded by a <script>, and a thrown message is the only
+          // thing a page author will actually see.
+          return new Response(`console.error(${JSON.stringify(`[embed-sandbox] SDK pr:${ref} — ${msg}`)});`, {
+            status: 502,
+            headers: { 'content-type': 'application/javascript; charset=utf-8', 'cache-control': 'no-store' },
+          });
+        }
       }
 
       if (segments[0] === 'mcp') {

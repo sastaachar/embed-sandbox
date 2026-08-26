@@ -173,6 +173,24 @@ await pg2.goto(`${BASE}/p/${noHost.body.projectId}/`, { waitUntil: 'domcontentlo
 await pg2.waitForSelector('h1', { timeout: 5000 });
 ok((await pg2.textContent('h1')).length > 0, 'project with no host still renders chrome');
 
+// ---- an UNRELEASED SDK: pkg.pr.new ships a tarball, so we unwrap and serve it ----
+const prProj = await api('/api/projects', {
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ name: 'pr sdk', thoughtSpotHost: BASE, sdkVersion: 'pr:641' }),
+});
+ok(prProj.body.projectId !== undefined, 'a project can pin an SDK PR build');
+const pg3 = await ctx.newPage();
+await pg3.goto(`${BASE}/p/${prProj.body.projectId}/`, { waitUntil: 'domcontentloaded' });
+const prSrc = await pg3.evaluate(() =>
+  JSON.parse(document.getElementById('sb-manifest').textContent).sdkUrl);
+ok(prSrc === '/sdk/pr/641/tsembed.js', `the manifest points at this site's unwrapper (${prSrc})`);
+// The SDK script is injected on init(), not at page load, so ask for it.
+const prLoaded = await pg3
+  .evaluate(() => window.Sandbox.init().then(() => !!window.tsembed, () => !!window.tsembed))
+  .catch(() => false);
+ok(prLoaded, 'and that PR build really boots — window.tsembed is there');
+
 await browser.close();
 
 console.log('\ntimings (local dev, cold):');

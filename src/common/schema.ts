@@ -1004,9 +1004,12 @@ export function validateProjectConfig(v: unknown): ProjectConfig {
     out.thoughtSpotHost = httpUrl(raw.thoughtSpotHost, 'thoughtSpotHost');
   }
   if (raw.sdkVersion !== undefined) {
-    const version = str(raw.sdkVersion, 'sdkVersion', 40);
-    if (!/^(latest|next|beta|\d+(\.\d+){0,2}(-[A-Za-z0-9.]+)?)$/.test(version)) {
-      fail('sdkVersion must be a semver range like 1.51.0, or latest/next/beta');
+    let version = str(raw.sdkVersion, 'sdkVersion', 200).trim();
+    // A pkg.pr.new install spec pasted from package.json is the same pin as pr:<ref>.
+    const pasted = /^https:\/\/pkg\.pr\.new\/.*@([A-Za-z0-9._-]{1,64})$/.exec(version);
+    if (pasted) version = `pr:${pasted[1]}`;
+    if (!/^(latest|next|beta|\d+(\.\d+){0,2}(-[A-Za-z0-9.]+)?|pr:[A-Za-z0-9._-]{1,64})$/.test(version)) {
+      fail('sdkVersion must be a semver range like 1.51.0, latest/next/beta, or a pkg.pr.new pin like pr:641 or pr:<commit>');
     }
     out.sdkVersion = version;
   }

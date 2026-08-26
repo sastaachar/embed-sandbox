@@ -1,5 +1,5 @@
 import type { Block, ButtonSpec, EmbedSpec, PageConfig, ProjectConfig } from './schema';
-import { sdkUrl } from './sdkUrl';
+import { sdkInstallSpec, sdkUrl } from './sdkUrl';
 
 export type Flavor = 'cdn' | 'esm' | 'react';
 
@@ -129,6 +129,8 @@ export function generateCode(
   includeInit = true,
   /** Absolute URL of this project's token proxy, for auth.tokenSource "proxy". */
   tokenProxyUrl?: string,
+  /** This site's origin, so a pkg.pr.new pin resolves to an absolute script src. */
+  origin = '',
 ): string {
   const embeds = embedsIn(page);
   // Every button, not only the ones that fire a host event: the React flavour renders
@@ -778,7 +780,7 @@ export function generateCode(
     }
 
     return [
-      `// npm install @thoughtspot/visual-embed-sdk@${version}`,
+      `// npm install ${sdkInstallSpec(version)}`,
       ...(() => {
         const all = [...placeholders, ...(usesNav ? ['goTo'] : [])];
         return all.length
@@ -833,7 +835,7 @@ export function generateCode(
     const pkg = '@thoughtspot/visual-embed-sdk';
     if (!includeInit) {
       return [
-        `// npm install ${pkg}@${version}`,
+        `// npm install ${sdkInstallSpec(version)}`,
         `// Assumes init() has already been called once at app bootstrap.`,
         ...(hasEmbeds ? [`import { ${pageImports.join(', ')} } from '${pkg}';`] : []),
         '',
@@ -843,7 +845,7 @@ export function generateCode(
       ].join('\n');
     }
     return [
-      `// npm install ${pkg}@${version}`,
+      `// npm install ${sdkInstallSpec(version)}`,
       '',
       `// ─── once per app, at bootstrap — NOT per page ───`,
       `// init() is global. Calling it again for each page or route is redundant`,
@@ -907,7 +909,7 @@ export function generateCode(
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>${(page.title || path).replace(/[<>&]/g, '')}</title>
-  <script src="${sdkUrl(version)}"></script>
+  <script src="${sdkUrl(version, origin)}"></script>
 </head>
 <body>${btnHtml}${valueHtml}
   ${containers}
