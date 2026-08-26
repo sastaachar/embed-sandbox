@@ -3,7 +3,7 @@ import type { Theme } from '../common/schema';
 import { resolveTheme } from '../common/theme';
 import { SDK_CDN_ORIGIN, sdkUrl } from '../common/sdkUrl';
 
-export const RUNTIME_VERSION = '31';
+export const RUNTIME_VERSION = '32';
 
 const THEME_VAR: Record<keyof Theme, string> = {
   colorPrimary: '--sb-primary',
@@ -102,7 +102,28 @@ border-radius:50%;border:1px solid var(--sb-border);background:var(--sb-surface)
 color:var(--sb-text);font:600 15px/1 ui-monospace,Menlo,monospace;cursor:pointer;
 box-shadow:0 4px 14px rgba(15,18,45,.18)}
 .sb-code-fab:hover{border-color:var(--sb-primary);color:var(--sb-primary)}
-.sb-code-overlay[hidden]{display:none}
+.sb-code-overlay.sb-set-fab{position:fixed;right:18px;bottom:70px;z-index:90;width:44px;height:44px;
+border-radius:50%;border:1px solid var(--sb-border);background:var(--sb-surface);
+color:var(--sb-text);font:16px/1 system-ui,sans-serif;cursor:pointer;
+box-shadow:0 4px 14px rgba(15,18,45,.18)}
+.sb-set-fab.sb-alone{bottom:18px}
+.sb-set-fab:hover{border-color:var(--sb-primary);color:var(--sb-primary)}
+.sb-set-body{flex:1;margin:0;padding:16px 18px;overflow-y:auto;display:flex;
+flex-direction:column;gap:14px;background:var(--sb-bg)}
+.sb-set-h{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;
+color:var(--sb-muted);font-weight:700;margin:0}
+.sb-set-note{margin:0;color:var(--sb-muted);font-size:.8rem}
+.sb-set-f{display:flex;flex-direction:column;gap:4px}
+.sb-set-f label{font-size:.78rem;color:var(--sb-muted);font-weight:600}
+.sb-set-f .sb-set-src{font-weight:400;text-transform:none;letter-spacing:0;opacity:.8}
+.sb-set-body input,.sb-set-body select{font:inherit;font-size:.85rem;padding:7px 10px;
+border:1px solid var(--sb-border);border-radius:var(--sb-radius);background:var(--sb-bg);
+color:var(--sb-text);width:100%}
+.sb-set-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.sb-set-foot{display:flex;gap:8px;align-items:center;padding:10px 18px;
+border-top:1px solid var(--sb-border);flex:0 0 auto}
+.sb-set-foot .sb-set-sp{flex:1}
+[hidden]{display:none}
 .sb-code-overlay{position:fixed;inset:auto 18px 74px 18px;max-width:900px;margin-left:auto;
 height:min(70vh,640px);z-index:95;display:flex;flex-direction:column;
 background:var(--sb-surface);border:1px solid var(--sb-border);border-radius:12px;
@@ -123,7 +144,28 @@ color:var(--sb-primary);text-decoration:none}
 white-space:pre;background:#2d2d2d;color:#ccc}
 .sb-modal-backdrop{position:fixed;inset:0;z-index:100;background:rgba(0,0,0,.45);
 display:flex;align-items:flex-start;justify-content:center;padding:5vh 16px;overflow-y:auto}
-.sb-modal-backdrop[hidden]{display:none}
+.sb-modal-backdrop.sb-set-fab{position:fixed;right:18px;bottom:70px;z-index:90;width:44px;height:44px;
+border-radius:50%;border:1px solid var(--sb-border);background:var(--sb-surface);
+color:var(--sb-text);font:16px/1 system-ui,sans-serif;cursor:pointer;
+box-shadow:0 4px 14px rgba(15,18,45,.18)}
+.sb-set-fab.sb-alone{bottom:18px}
+.sb-set-fab:hover{border-color:var(--sb-primary);color:var(--sb-primary)}
+.sb-set-body{flex:1;margin:0;padding:16px 18px;overflow-y:auto;display:flex;
+flex-direction:column;gap:14px;background:var(--sb-bg)}
+.sb-set-h{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;
+color:var(--sb-muted);font-weight:700;margin:0}
+.sb-set-note{margin:0;color:var(--sb-muted);font-size:.8rem}
+.sb-set-f{display:flex;flex-direction:column;gap:4px}
+.sb-set-f label{font-size:.78rem;color:var(--sb-muted);font-weight:600}
+.sb-set-f .sb-set-src{font-weight:400;text-transform:none;letter-spacing:0;opacity:.8}
+.sb-set-body input,.sb-set-body select{font:inherit;font-size:.85rem;padding:7px 10px;
+border:1px solid var(--sb-border);border-radius:var(--sb-radius);background:var(--sb-bg);
+color:var(--sb-text);width:100%}
+.sb-set-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.sb-set-foot{display:flex;gap:8px;align-items:center;padding:10px 18px;
+border-top:1px solid var(--sb-border);flex:0 0 auto}
+.sb-set-foot .sb-set-sp{flex:1}
+[hidden]{display:none}
 .sb-modal{background:var(--sb-bg);color:var(--sb-text);border-radius:var(--sb-radius);
 width:100%;max-width:900px;box-shadow:0 12px 40px rgba(0,0,0,.28);display:flex;flex-direction:column;
 max-height:90vh}
@@ -184,6 +226,20 @@ export interface ShellInput {
  * update re-reads exactly what the shell inlined — theme derivation and all — instead
  * of the client re-deriving it and drifting.
  */
+/** Keys the document interpolates: `{{liveboardId}}` in text, config, anywhere. */
+function varsUsedIn(config: unknown, pages: Page[]): string[] {
+  const found = new Set<string>();
+  const scan = (value: unknown) => {
+    const json = JSON.stringify(value ?? null) ?? '';
+    const re = /\{\{\s*([A-Za-z_$][A-Za-z0-9_$-]*)/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(json)) !== null) found.add(m[1]);
+  };
+  scan(config);
+  for (const page of pages) scan(page.config);
+  return [...found];
+}
+
 export function buildManifest(project: Project, pages: Page[], basePath: string) {
   return {
     projectId: project.id,
@@ -195,6 +251,9 @@ export function buildManifest(project: Project, pages: Page[], basePath: string)
     // Read by the builder and tests; the published page ignores it (the lock warns
     // in the builder only).
     lock: project.lock ?? null,
+    // Every {{key}} the document interpolates, so the settings panel can offer a field
+    // for a variable nobody declared — the page already depends on it.
+    varsUsed: varsUsedIn(project.config, pages),
   };
 }
 
@@ -247,6 +306,27 @@ export function renderNotFound(message: string): string {
 /* The hidden ATTRIBUTE must beat any display rule above — a display:flex/inline-flex
    on the same element silently wins otherwise, which has hidden a Close button and
    shown a JS/HTML toggle in React mode. Last in the sheet, so ties go to it. */
+.sb-set-fab{position:fixed;right:18px;bottom:70px;z-index:90;width:44px;height:44px;
+border-radius:50%;border:1px solid var(--sb-border);background:var(--sb-surface);
+color:var(--sb-text);font:16px/1 system-ui,sans-serif;cursor:pointer;
+box-shadow:0 4px 14px rgba(15,18,45,.18)}
+.sb-set-fab.sb-alone{bottom:18px}
+.sb-set-fab:hover{border-color:var(--sb-primary);color:var(--sb-primary)}
+.sb-set-body{flex:1;margin:0;padding:16px 18px;overflow-y:auto;display:flex;
+flex-direction:column;gap:14px;background:var(--sb-bg)}
+.sb-set-h{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;
+color:var(--sb-muted);font-weight:700;margin:0}
+.sb-set-note{margin:0;color:var(--sb-muted);font-size:.8rem}
+.sb-set-f{display:flex;flex-direction:column;gap:4px}
+.sb-set-f label{font-size:.78rem;color:var(--sb-muted);font-weight:600}
+.sb-set-f .sb-set-src{font-weight:400;text-transform:none;letter-spacing:0;opacity:.8}
+.sb-set-body input,.sb-set-body select{font:inherit;font-size:.85rem;padding:7px 10px;
+border:1px solid var(--sb-border);border-radius:var(--sb-radius);background:var(--sb-bg);
+color:var(--sb-text);width:100%}
+.sb-set-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.sb-set-foot{display:flex;gap:8px;align-items:center;padding:10px 18px;
+border-top:1px solid var(--sb-border);flex:0 0 auto}
+.sb-set-foot .sb-set-sp{flex:1}
 [hidden]{display:none}
 </style></head>
 <body><div class="sb-center"><div class="sb-note"><strong>Not found</strong>${escapeHtml(message)}</div></div></body></html>`;

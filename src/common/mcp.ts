@@ -218,6 +218,18 @@ showCode (default true: a \u2039/\u203A toggle on the published site shows each 
 code with a fork-and-edit link), themeEmbed (default true: pushes the theme into embeds as --ts-var-*), live
 (default true: published pages poll /version and re-render on change).
 
+config.variables: { liveboardId: { label, default, placeholder } } — variables a
+VISITOR may set from the site's own settings panel (the gear, beside the ‹/› code
+button). {{name}} reads one anywhere, including inside an embed's config, so a
+liveboard id can be a variable with a default instead of a hard-coded guid.
+Resolution order, everywhere: what this page load set > what the visitor saved in
+their own browser > the declared default > unset. Set with setVariable(key, value)
+for this load, or setVariable(key, value, { persist: true }) to keep it in their
+browser; reset(key) drops theirs. The panel also lets a visitor supply the
+thoughtSpotHost/auth the project lacks — kept in their browser, never sent here —
+and a page that cannot init() yet says "Settings needed" instead of failing
+silently. showSettings:false hides the gear, showCode:false the ‹/›.
+
 theme tokens: colorPrimary, colorPrimaryText, colorBg, colorSurface, colorText,
 colorMuted, colorBorder, fontFamily, fontHeading, radius, maxWidth, headerHeight,
 space. css (site) and page.css are raw CSS; useful classes: .sb-header, .sb-nav,
@@ -232,7 +244,7 @@ page: { title, css, modals, blocks: [...] }.
 ## Blocks
 
 heading { text, level 1|2|3 } · text { text } · divider · spacer { size }
-value { key, label, placeholder } — shows a value-store key, updates live;
+value { key, label, placeholder } — shows a variable, updates live;
       placeholder shows until the key is first set (default "—") — use it for
       loading states ("Loading the Liveboard…")
 buttons { align, items: [{ label, variant primary|secondary|ghost, actions: [...] }] }

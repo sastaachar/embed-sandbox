@@ -631,6 +631,20 @@ remounts. Polling pauses while the tab is hidden and catches up on focus.
 
 `live: false` in site config opts a project out entirely.
 
+### Variables, and the visitor's own settings
+
+Every variable goes through one resolution order — **what this page load set, then
+what the visitor saved in their own browser, then the project's declared default** —
+so `{{liveboardId}}` in an embed's config can be a variable rather than a hard-coded
+guid. `config.variables` declares them (label, default, placeholder); anything a page
+already interpolates is offered too.
+
+The published page carries a **⚙ settings panel** next to the ‹/› code button. A
+visitor can fill in the `thoughtSpotHost`/auth the project doesn't have — stored in
+their browser, never sent to us — and set any variable. Until init() has what it
+needs, embeds say *"Settings needed"* and the panel opens itself rather than the page
+failing silently. `showSettings: false` and `showCode: false` hide either button.
+
 ### The advisory edit lock
 
 An agent editing over MCP announces itself first (`lock_project`, or

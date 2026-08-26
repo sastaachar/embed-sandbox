@@ -137,6 +137,69 @@ ok(await pg.evaluate(() => window.Ether.embed !== null), 'Ether.embed exposes th
 ok(await pg.evaluate(() => window.Ether.embeds().length === 1), 'Ether.embeds() lists all page embeds');
 ok(await pg.evaluate(() => window.Ether.path === '/'), 'Ether.path reports the current route');
 
+// ---- variables resolve session > this browser > project default ----
+const vp = await api('/api/projects', {
+  method: 'POST', headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({
+    name: 'vars', namespace: 'Ether', thoughtSpotHost: BASE, sdkVersion: '1.51.0',
+    variables: { liveboardId: { label: 'Liveboard', default: 'lb-default' } },
+  }),
+});
+const vauth = { 'content-type': 'application/json', authorization: `Bearer ${vp.editToken}` };
+await api(`/api/projects/${vp.projectId}/pages`, { method: 'PUT', headers: vauth,
+  body: JSON.stringify({ path: '/', page: { blocks: [
+    { type: 'value', key: 'liveboardId', label: 'Board' },
+    { type: 'embed', embed: { type: 'liveboard', config: { liveboardId: '{{liveboardId}}' } } },
+  ] } }) });
+
+const vpg = await b.newPage();
+await vpg.goto(`${BASE}/p/${vp.projectId}/`, { waitUntil: 'domcontentloaded' });
+await vpg.waitForSelector('.sb-value-out', { timeout: 8000 });
+ok(await vpg.evaluate(() => window.Ether.get('liveboardId') === 'lb-default'),
+  'a declared default is the value when nothing else is set');
+ok(await vpg.evaluate(() => window.Ether.variables().find((v) => v.key === 'liveboardId').source === 'default'),
+  'and variables() reports where it came from');
+
+// persist: survives a reload, because it is this visitor's own value
+await vpg.evaluate(() => window.Ether.set('liveboardId', 'lb-saved', { persist: true }));
+await vpg.reload({ waitUntil: 'domcontentloaded' });
+await vpg.waitForSelector('.sb-value-out', { timeout: 8000 });
+ok(await vpg.evaluate(() => window.Ether.get('liveboardId') === 'lb-saved'),
+  'a persisted value outlives the page load');
+ok(await vpg.evaluate(() => window.Ether.variables().find((v) => v.key === 'liveboardId').source === 'saved'),
+  'reported as saved, not default');
+ok((await vpg.textContent('.sb-value-out')) === 'lb-saved',
+  'and the page renders it — so {{liveboardId}} drives the embed too');
+
+// a session set wins while the page lives, and clearing it reveals the saved one again
+await vpg.evaluate(() => window.Ether.set('liveboardId', 'lb-session'));
+ok(await vpg.evaluate(() => window.Ether.get('liveboardId') === 'lb-session'), 'a session value wins');
+await vpg.evaluate(() => window.Ether.clear('liveboardId'));
+ok(await vpg.evaluate(() => window.Ether.get('liveboardId') === 'lb-saved'),
+  'clearing the session value falls back to the saved one, not to nothing');
+await vpg.evaluate(() => window.Ether.reset('liveboardId'));
+ok(await vpg.evaluate(() => window.Ether.get('liveboardId') === 'lb-default'),
+  'reset() drops this browser\u2019s value and the default applies again');
+ok(await vpg.evaluate(() => !!document.querySelector('.sb-set-fab')),
+  'the settings gear is on the page');
+
+// ---- a page that cannot init says so instead of loading nothing ----
+const gated = await api('/api/projects', {
+  method: 'POST', headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ name: 'gated', namespace: 'Ether', sdkVersion: '1.51.0', showSettings: false }),
+});
+await api(`/api/projects/${gated.projectId}/pages`, { method: 'PUT',
+  headers: { 'content-type': 'application/json', authorization: `Bearer ${gated.editToken}` },
+  body: JSON.stringify({ path: '/', page: { blocks: [
+    { type: 'embed', embed: { type: 'liveboard', config: { liveboardId: 'lb-1' } } }] } }) });
+const gpg = await b.newPage();
+await gpg.goto(`${BASE}/p/${gated.projectId}/`, { waitUntil: 'domcontentloaded' });
+await gpg.waitForSelector('.sb-note', { timeout: 8000 });
+ok((await gpg.textContent('.sb-note')).includes('Settings needed'),
+  'no host means the embed asks for settings rather than failing silently');
+ok(!(await gpg.evaluate(() => !!document.querySelector('.sb-set-fab'))),
+  'showSettings:false hides the gear');
+
 await b.close();
 pass.forEach(m => console.log('  ok   ' + m));
 fail.forEach(m => console.log('  FAIL ' + m));

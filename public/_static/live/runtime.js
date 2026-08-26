@@ -20,6 +20,9 @@
   var active = null;
   var NS = M.project.namespace || 'Sandbox';
   var values = {};
+  // What THIS page load set, kept apart from what the visitor saved: a session value
+  // wins, and clearing it must reveal the saved one rather than nothing.
+  var session = {};
   var listeners = {};
   var textBindings = [];
   var valueBindings = [];
@@ -50,6 +53,96 @@
   }
 
   // ------------------------------------------------------------ value store
+  //
+  // ONE way in and out for every variable, because a value can come from four places
+  // and the order matters: what this session set, what this visitor saved in their own
+  // browser, what the project declares as a default, then nothing. The settings panel,
+  // {{token}} interpolation, value blocks, event handlers and embed configs all read
+  // and write through readVar/writeVar so that order holds everywhere.
+
+  var VAR_LS = 'sb.var.' + M.projectId + '.';
+  var INIT_LS = 'sb.init.' + M.projectId;
+  var declaredVars = (M.project && M.project.variables) || {};
+
+  function lsRead(key) {
+    try { return localStorage.getItem(VAR_LS + key); } catch (e) { return null; }
+  }
+  function lsWrite(key, value) {
+    try { localStorage.setItem(VAR_LS + key, JSON.stringify(value)); } catch (e) { /* private mode */ }
+  }
+  function lsDrop(key) {
+    try { localStorage.removeItem(VAR_LS + key); } catch (e) { /* private mode */ }
+  }
+  function decode(raw) {
+    if (raw === null) return undefined;
+    try { return JSON.parse(raw); } catch (e) { return raw; }
+  }
+
+  /** Keys this visitor has saved, plus every key the project declares. */
+  function knownVarKeys() {
+    var keys = Object.keys(declaredVars);
+    try {
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (k && k.indexOf(VAR_LS) === 0) {
+          var name = k.slice(VAR_LS.length);
+          if (keys.indexOf(name) === -1) keys.push(name);
+        }
+      }
+    } catch (e) { /* private mode */ }
+    // Anything a page interpolates is settable too, even if nobody declared it.
+    Object.keys(values).forEach(function (k) { if (keys.indexOf(k) === -1) keys.push(k); });
+    (M.varsUsed || []).forEach(function (k) { if (keys.indexOf(k) === -1) keys.push(k); });
+    return keys;
+  }
+
+  /** Where a key's current value came from — what the settings panel shows. */
+  function varSource(key) {
+    if (Object.prototype.hasOwnProperty.call(session, key)) return 'session';
+    if (lsRead(key) !== null) return 'saved';
+    if (declaredVars[key] && declaredVars[key].default !== undefined) return 'default';
+    return 'unset';
+  }
+
+  /** session > saved in this browser > declared default > undefined. */
+  function readVar(key) {
+    if (Object.prototype.hasOwnProperty.call(session, key)) return session[key];
+    var saved = decode(lsRead(key));
+    if (saved !== undefined) return saved;
+    var dec = declaredVars[key];
+    return dec && dec.default !== undefined ? dec.default : undefined;
+  }
+
+  function writeVar(key, value, persist) {
+    if (persist) { lsWrite(key, value); delete session[key]; }
+    else session[key] = value;
+    values[key] = readVar(key);
+    refreshBindings();
+    (listeners[key] || []).slice().forEach(function (fn) {
+      try { fn(values[key], key); } catch (err) { console.error('[' + NS + '] listener failed', err); }
+    });
+    return values[key];
+  }
+
+  /** Drop this visitor's own value, falling back to the project's default. */
+  function resetVar(key) {
+    delete session[key];
+    lsDrop(key);
+    values[key] = readVar(key);
+    refreshBindings();
+    (listeners[key] || []).slice().forEach(function (fn) {
+      try { fn(values[key], key); } catch (err) { console.error('[' + NS + '] listener failed', err); }
+    });
+    return values[key];
+  }
+
+  /** `values` is the resolved view every reader already uses; seed it once at boot. */
+  function hydrateVars() {
+    knownVarKeys().forEach(function (k) {
+      var v = readVar(k);
+      if (v !== undefined) values[k] = v;
+    });
+  }
 
   function lookup(path) {
     var parts = String(path).split('.');
@@ -96,20 +189,38 @@
   }
 
   var store = {
-    set: function (key, value) {
+    /**
+     * `opts.persist` keeps the value in THIS visitor's browser for next time — what the
+     * settings panel does. Without it the value lives for this page load only, which is
+     * what an event handler wants.
+     */
+    set: function (key, value, opts) {
       if (typeof key !== 'string' || !key) throw new TypeError(NS + '.set(key, value): key must be a string');
-      values[key] = value;
-      refreshBindings();
-      (listeners[key] || []).slice().forEach(function (fn) {
-        try { fn(value, key); } catch (err) { console.error('[' + NS + '] listener failed', err); }
+      return writeVar(key, value, !!(opts && opts.persist));
+    },
+    /** Forget this visitor's value for a key; the project default applies again. */
+    reset: function (key) {
+      if (typeof key !== 'string' || !key) throw new TypeError(NS + '.reset(key): key must be a string');
+      return resetVar(key);
+    },
+    /** Every settable key with its value and where that value came from. */
+    variables: function () {
+      return knownVarKeys().sort().map(function (k) {
+        var dec = declaredVars[k] || {};
+        return {
+          key: k,
+          label: dec.label || k,
+          placeholder: dec.placeholder || '',
+          value: readVar(k),
+          source: varSource(k),
+        };
       });
-      return value;
     },
     get: function (key) {
       return key === undefined ? undefined : lookup(key);
     },
     /** Named alias for the pairing a "set" action creates. */
-    setVariable: function (key, value) { return store.set(key, value); },
+    setVariable: function (key, value, opts) { return store.set(key, value, opts); },
     getVariable: function (key) {
       return key === undefined ? undefined : lookup(key);
     },
@@ -126,10 +237,25 @@
         listeners[key] = (listeners[key] || []).filter(function (f) { return f !== fn; });
       };
     },
+    /**
+     * Drops what THIS page load set, then re-resolves: a value saved in this browser or
+     * a project default takes over again. Use reset() to drop the saved one too.
+     */
     clear: function (key) {
-      if (key === undefined) values = {};
-      else delete values[key];
+      if (key === undefined) {
+        session = {};
+        values = {};
+        hydrateVars();
+        refreshBindings();
+        return;
+      }
+      delete session[key];
+      var next = readVar(key);
+      if (next === undefined) delete values[key]; else values[key] = next;
       refreshBindings();
+      (listeners[key] || []).slice().forEach(function (fn) {
+        try { fn(values[key], key); } catch (err) { console.error('[' + NS + '] listener failed', err); }
+      });
     },
 
     /**
@@ -946,6 +1072,25 @@
   }
 
   function mountEmbed(path, spec, wrapper, idx) {
+    // Nothing can load before init() has what it needs, and the visitor is the one who
+    // can supply it — so say so where the embed would be, and open the panel once.
+    var initMissing = initNeeds();
+    if (initMissing.length) {
+      clear(wrapper);
+      var box = note(
+        'Settings needed',
+        'This embed needs ' + initMissing.join(' and ') + '. Open Settings, fill it in, ' +
+          'and press Load — it stays in this browser.',
+      );
+      var openBtn = el('button', 'sb-btn', 'Open settings');
+      openBtn.setAttribute('data-variant', 'primary');
+      openBtn.style.marginTop = '10px';
+      openBtn.onclick = function () { showSettings(); };
+      box.appendChild(openBtn);
+      wrapper.appendChild(box);
+      autoOpenSettings();
+      return;
+    }
     // Constructing it anyway just produces LIVEBOARD_ID_MISSING in the error modal,
     // which says nothing the page cannot say better itself.
     var needs = missingId(spec);
@@ -1274,16 +1419,11 @@
     refreshBindings();
     if (!mounts.length) return;
 
-    if (!projectCfg.thoughtSpotHost) {
-      mounts.forEach(function (m) {
-        clear(m.wrapper);
-        m.wrapper.appendChild(
-          note(
-            'No ThoughtSpot host set',
-            'Set thoughtSpotHost on this project (via MCP set_site or the API) and the embed will render here.',
-          ),
-        );
-      });
+    // Anything init() still lacks is asked for in ONE place — mountEmbed's gate, which
+    // offers the settings panel. A separate no-host note here would pre-empt it and
+    // leave the visitor with nothing to click.
+    if (initNeeds().length) {
+      mounts.forEach(function (m) { mountEmbed(path, m.spec, m.wrapper, m.idx); });
       return;
     }
 
@@ -1314,6 +1454,44 @@
       };
       document.head.appendChild(s);
     });
+  }
+
+  /**
+   * A visitor's own connection details, kept in THEIR browser only — never sent to us
+   * and never part of the shared document. Merged over the project so everything
+   * downstream (ensureSdk, the manifest's sdkUrl, generated code) sees one config.
+   */
+  function readInitOverride() {
+    try { return JSON.parse(localStorage.getItem(INIT_LS) || 'null') || null; } catch (e) { return null; }
+  }
+  function writeInitOverride(patch) {
+    try {
+      if (patch) localStorage.setItem(INIT_LS, JSON.stringify(patch));
+      else localStorage.removeItem(INIT_LS);
+    } catch (e) { /* private mode */ }
+  }
+  function applyInitOverride() {
+    var o = readInitOverride();
+    if (!o) return;
+    if (o.thoughtSpotHost) M.project.thoughtSpotHost = o.thoughtSpotHost;
+    if (o.authType) M.project.authType = o.authType;
+    if (o.auth) M.project.auth = o.auth;
+  }
+
+  var TOKEN_AUTH_TYPES = ['TrustedAuthToken', 'TrustedAuthTokenCookieless'];
+
+  /** What init() still lacks. Empty means the page can load embeds on its own. */
+  function initNeeds() {
+    var p = M.project || {};
+    var missing = [];
+    if (!p.thoughtSpotHost) missing.push('a ThoughtSpot host');
+    if (TOKEN_AUTH_TYPES.indexOf(p.authType || 'None') !== -1) {
+      var a = p.auth || {};
+      var ok = (a.tokenSource === 'credentials' && a.username && a.secret) ||
+        a.tokenSource === 'endpoint' || a.tokenSource === 'proxy';
+      if (!ok) missing.push('a way to get a token for ' + p.authType);
+    }
+    return missing;
   }
 
   function ensureSdk() {
@@ -1490,6 +1668,11 @@
       NS + '.init() resolves the one-per-project SDK init · ' + NS + '.config, ' + NS + '.embeds()',
   );
 
+  // A visitor's own host/auth and saved variables are part of the config the first
+  // render reads, so both land before it runs.
+  applyInitOverride();
+  hydrateVars();
+
   render();
 
   // ------------------------------------------------------------ live updates
@@ -1548,6 +1731,12 @@
     (next.pages || []).forEach(function (p) { byPath[p.path] = p; });
     M.project = next.project;
     M.sdkUrl = next.sdkUrl;
+    // A live update replaces the project wholesale, which would drop this visitor's own
+    // host/auth and any newly declared variable defaults.
+    declaredVars = M.project.variables || {};
+    M.varsUsed = next.varsUsed || M.varsUsed;
+    applyInitOverride();
+    hydrateVars();
     releaseChangedEmbeds(byPath);
     liveVersion = next.updatedAt || liveVersion;
     render();
@@ -1681,6 +1870,173 @@
     };
     closeBtn.onclick = function () { root.hidden = true; };
     return { root: root, load: load };
+  }
+
+  // ---------------------------------------------------------------- settings
+  // Same shape as the ‹/› overlay, because it is the same kind of thing: a panel the
+  // page owns, off to one side, that a visitor opens when they need it.
+
+  var settingsPanel = null;
+  var settingsAutoOpened = false;
+
+  function settingsOverlay() {
+    var root = el('div', 'sb-code-overlay sb-set-overlay');
+    root.hidden = true;
+    var head = el('div', 'sb-code-head');
+    head.appendChild(el('strong', null, 'Settings'));
+    var sp = el('span'); sp.style.flex = '1'; head.appendChild(sp);
+    var closeBtn = el('button', null, 'Close');
+    head.appendChild(closeBtn);
+    var body = el('div', 'sb-set-body');
+    var foot = el('div', 'sb-set-foot');
+    var loadBtn = el('button', null, 'Load');
+    loadBtn.className = 'sb-btn';
+    loadBtn.setAttribute('data-variant', 'primary');
+    var resetBtn = el('button', 'sb-btn', 'Reset all');
+    var footSp = el('span', 'sb-set-sp');
+    var msg = el('span', 'sb-set-note');
+    foot.appendChild(loadBtn); foot.appendChild(resetBtn);
+    foot.appendChild(footSp); foot.appendChild(msg);
+    root.appendChild(head); root.appendChild(body); root.appendChild(foot);
+    document.body.appendChild(root);
+
+    var fields = {};
+
+    function field(parent, label, value, placeholder, hint) {
+      var wrap = el('div', 'sb-set-f');
+      var lab = el('label', null, label);
+      if (hint) {
+        var src = el('span', 'sb-set-src', ' · ' + hint);
+        lab.appendChild(src);
+      }
+      var input = el('input');
+      input.value = value === undefined || value === null ? '' : String(value);
+      if (placeholder) input.placeholder = placeholder;
+      wrap.appendChild(lab); wrap.appendChild(input);
+      parent.appendChild(wrap);
+      return input;
+    }
+
+    function build() {
+      clear(body);
+      fields = { vars: {} };
+      var needs = initNeeds();
+
+      var connH = el('p', 'sb-set-h', 'Connection');
+      body.appendChild(connH);
+      body.appendChild(el(
+        'p',
+        'sb-set-note',
+        needs.length
+          ? 'This page needs ' + needs.join(' and ') + ' before it can load.'
+          : 'Already configured by the site. Override it here for your own browser if you want.',
+      ));
+      fields.host = field(body, 'ThoughtSpot host', M.project.thoughtSpotHost || '',
+        'https://your.thoughtspot.cloud');
+      var authWrap = el('div', 'sb-set-f');
+      authWrap.appendChild(el('label', null, 'Auth type'));
+      var sel = el('select');
+      ['None', 'EmbeddedSSO', 'SAMLRedirect', 'OIDCRedirect', 'TrustedAuthTokenCookieless', 'TrustedAuthToken']
+        .forEach(function (name) {
+          var opt = el('option', null, name);
+          opt.value = name;
+          if ((M.project.authType || 'None') === name) opt.selected = true;
+          sel.appendChild(opt);
+        });
+      authWrap.appendChild(sel);
+      body.appendChild(authWrap);
+      fields.authType = sel;
+
+      var credWrap = el('div', 'sb-set-f');
+      credWrap.style.gap = '10px';
+      body.appendChild(credWrap);
+      function syncCreds() {
+        clear(credWrap);
+        if (TOKEN_AUTH_TYPES.indexOf(sel.value) === -1) { fields.user = null; fields.secret = null; return; }
+        var current = (M.project.auth && M.project.auth.tokenSource === 'credentials') ? M.project.auth : {};
+        fields.user = field(credWrap, 'Username', current.username || '', 'embed user');
+        fields.secret = field(credWrap, 'Password', current.secret || '', '••••••');
+        fields.secret.type = 'password';
+        credWrap.appendChild(el('p', 'sb-set-note',
+          'Used from this browser to mint a token. Stored here only — never sent to the site.'));
+      }
+      sel.onchange = syncCreds;
+      syncCreds();
+
+      var list = store.variables();
+      if (list.length) {
+        body.appendChild(el('p', 'sb-set-h', 'Variables'));
+        body.appendChild(el('p', 'sb-set-note',
+          'Used wherever the page writes {{name}} — including an embed\u2019s liveboard id.'));
+        list.forEach(function (v) {
+          var shown = typeof v.value === 'object' && v.value !== null ? JSON.stringify(v.value) : v.value;
+          fields.vars[v.key] = field(body, v.label, shown, v.placeholder || v.key, v.source);
+        });
+      }
+    }
+
+    function apply() {
+      var host = fields.host.value.trim().replace(/\/+$/, '');
+      var authType = fields.authType.value;
+      var patch = {};
+      if (host) patch.thoughtSpotHost = host;
+      if (authType) patch.authType = authType;
+      if (fields.user && fields.secret && fields.user.value.trim() && fields.secret.value) {
+        patch.auth = {
+          tokenSource: 'credentials',
+          username: fields.user.value.trim(),
+          secret: fields.secret.value,
+          secretType: 'password',
+        };
+      }
+      writeInitOverride(Object.keys(patch).length ? patch : null);
+      Object.keys(fields.vars).forEach(function (key) {
+        var raw = fields.vars[key].value;
+        if (raw === '') resetVar(key);
+        else store.set(key, raw, { persist: true });
+      });
+      applyInitOverride();
+      // init() runs once per page and cannot be re-pointed at another host, so a page
+      // that already booted the SDK has to start over. One that has not can just render.
+      if (sdk) { location.reload(); return; }
+      msg.textContent = 'loading…';
+      Object.keys(slots).forEach(releaseSlot);
+      render();
+      root.hidden = true;
+    }
+
+    loadBtn.onclick = apply;
+    resetBtn.onclick = function () {
+      writeInitOverride(null);
+      store.variables().forEach(function (v) { resetVar(v.key); });
+      location.reload();
+    };
+    closeBtn.onclick = function () { root.hidden = true; };
+    return { root: root, build: build };
+  }
+
+  function showSettings() {
+    if (M.project.showSettings === false) return;
+    if (!settingsPanel) settingsPanel = settingsOverlay();
+    settingsPanel.build();
+    settingsPanel.root.hidden = false;
+  }
+
+  /** Open it unasked the first time a page cannot load without it — once. */
+  function autoOpenSettings() {
+    if (settingsAutoOpened || M.project.showSettings === false) return;
+    settingsAutoOpened = true;
+    showSettings();
+  }
+
+  if (M.project.showSettings !== false) {
+    var setFab = el('button', 'sb-set-fab' + (M.project.showCode === false ? ' sb-alone' : ''), '\u2699');
+    setFab.title = 'Settings — connection and variables, kept in this browser';
+    setFab.onclick = function () {
+      if (settingsPanel && !settingsPanel.root.hidden) { settingsPanel.root.hidden = true; return; }
+      showSettings();
+    };
+    document.body.appendChild(setFab);
   }
 
   if (M.project.showCode !== false) {

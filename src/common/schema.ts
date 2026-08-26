@@ -199,6 +199,14 @@ export interface ProjectConfig {
   showEmbedErrors?: boolean;
   /** The ‹/› toggle on the published site: page code + fork link. Default true. */
   showCode?: boolean;
+  /** The ⚙ settings panel on the published site. Default true. */
+  showSettings?: boolean;
+  /**
+   * Variables a visitor may set — from the settings panel, or persisted in their own
+   * browser. `{{key}}` anywhere (including an embed's config) reads one, so a liveboard
+   * id can be a variable with a default rather than a hard-coded value.
+   */
+  variables?: Record<string, { label?: string; default?: string; placeholder?: string }>;
   /** Push the derived palette into the embed as --ts-var-* variables. Default true. */
   themeEmbed?: boolean;
   /** Set false to stop a published page polling for document changes. Default: on. */
@@ -1053,6 +1061,25 @@ export function validateProjectConfig(v: unknown): ProjectConfig {
     }
   }
   if (raw.showCode !== undefined) out.showCode = optBool(raw.showCode, 'showCode');
+  if (raw.showSettings !== undefined) out.showSettings = optBool(raw.showSettings, 'showSettings');
+  if (raw.variables !== undefined) {
+    const raw2 = plainObject(raw.variables, 'variables');
+    const out2: NonNullable<ProjectConfig['variables']> = {};
+    for (const [key, spec] of Object.entries(raw2)) {
+      if (!VALUE_KEY.test(key)) fail(`variables key "${key}" must be a simple name`);
+      const v = plainObject(spec ?? {}, `variables.${key}`);
+      const entry: { label?: string; default?: string; placeholder?: string } = {};
+      const label = optStr(v.label, `variables.${key}.label`, 120);
+      if (label !== undefined) entry.label = label;
+      const dflt = optStr(v.default, `variables.${key}.default`, 400);
+      if (dflt !== undefined) entry.default = dflt;
+      const ph = optStr(v.placeholder, `variables.${key}.placeholder`, 120);
+      if (ph !== undefined) entry.placeholder = ph;
+      out2[key] = entry;
+    }
+    if (Object.keys(out2).length > 40) fail('variables supports at most 40 keys');
+    out.variables = out2;
+  }
   if (raw.showEmbedErrors !== undefined) {
     out.showEmbedErrors = optBool(raw.showEmbedErrors, 'showEmbedErrors');
   }

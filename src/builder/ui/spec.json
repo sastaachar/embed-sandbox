@@ -129,6 +129,9 @@
     { "key": "name", "label": "Project name", "kind": "text" },
     { "key": "thoughtSpotHost", "label": "ThoughtSpot host", "kind": "text" },
     { "key": "sdkVersion", "label": "SDK version", "kind": "text", "placeholder": "latest, 1.51.0, or pr:641 / pr:<commit>", "note": "A pkg.pr.new pin (pr:641, pr:<commit>, or the URL from package.json) loads an unreleased PR build — this site unwraps the tarball and serves it." },
-    { "key": "authType", "label": "Auth type", "kind": "select", "options": [["None", "None"], ["EmbeddedSSO", "EmbeddedSSO"], ["SAMLRedirect", "SAMLRedirect"], ["OIDCRedirect", "OIDCRedirect"], ["TrustedAuthToken", "TrustedAuthToken"], ["TrustedAuthTokenCookieless", "TrustedAuthTokenCookieless"]] }
+    { "key": "authType", "label": "Auth type", "kind": "select", "options": [["None", "None"], ["EmbeddedSSO", "EmbeddedSSO"], ["SAMLRedirect", "SAMLRedirect"], ["OIDCRedirect", "OIDCRedirect"], ["TrustedAuthToken", "TrustedAuthToken"], ["TrustedAuthTokenCookieless", "TrustedAuthTokenCookieless"]] },
+    { "key": "showCode", "label": "Show ‹/› code button on the site", "kind": "checkbox", "default": true },
+    { "key": "showSettings", "label": "Show ⚙ settings button on the site", "kind": "checkbox", "default": true },
+    { "key": "variables", "label": "Variables", "kind": "json", "note": "Visitors can set these from the site\u2019s settings panel, and {{name}} reads one anywhere — including an embed\u2019s liveboardId. { \"liveboardId\": { \"label\": \"Liveboard\", \"default\": \"<guid>\" } }" }
   ]
 }
