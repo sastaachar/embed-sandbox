@@ -653,6 +653,23 @@ payload)` choke point, which is what makes the fire-and-reply pairing possible;
 embed events come from a single `EmbedEvent.ALL` listener per embed, whose payload
 carries the event name. Off by default, and it costs nothing when off.
 
+Three sources, because one alone leaves gaps:
+
+- **`trigger` is patched on the prototype** that all embed classes inherit, so the
+  log includes the SDK's *own* host events — `UpdateEmbedParams` on a pre-render
+  reveal, `Navigate`, `DestroyEmbed`, `VisibleEmbedCoordinates` — which never pass
+  through this project's code.
+- **`EmbedEvent.ALL`**, one listener per embed, for events the SDK surfaces.
+- **A capture-phase `message` listener** for the raw wire: everything the iframe
+  posts to the page, whatever the SDK does with it. Only this direction is
+  interceptable — host → iframe goes through `postMessage` on a cross-origin
+  `contentWindow`, and the only hook for that is the `contentWindow` getter, which
+  would break the `event.source === iframe.contentWindow` identity the SDK routes
+  incoming events by.
+
+Right-click any row for **Only this event** / **Hide this event** (hiding
+accumulates), **Only this direction**, copy payload, or log it to the console.
+
 ### The advisory edit lock
 
 An agent editing over MCP announces itself first (`lock_project`, or

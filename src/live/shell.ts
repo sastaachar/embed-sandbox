@@ -3,7 +3,7 @@ import type { Theme } from '../common/schema';
 import { resolveTheme } from '../common/theme';
 import { SDK_CDN_ORIGIN, sdkUrl } from '../common/sdkUrl';
 
-export const RUNTIME_VERSION = '36';
+export const RUNTIME_VERSION = '40';
 
 const THEME_VAR: Record<keyof Theme, string> = {
   colorPrimary: '--sb-primary',
@@ -223,6 +223,16 @@ border-top:1px solid var(--sb-border)}
 .sb-dev-p{color:var(--sb-muted);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sb-dev-full{margin:0;padding:6px 10px 10px;background:var(--sb-bg);white-space:pre-wrap;
 word-break:break-word;font-size:11.5px;max-height:210px;overflow:auto}
+.sb-dev-menu{position:fixed;z-index:97;min-width:190px;padding:4px;
+background:var(--sb-surface);border:1px solid var(--sb-border);border-radius:9px;
+box-shadow:0 12px 32px rgba(15,18,45,.28);font-size:12px}
+.sb-dev-menu button{display:block;width:100%;text-align:left;border:0;background:none;
+padding:6px 10px;border-radius:6px;color:var(--sb-text);font:inherit;cursor:pointer;
+white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sb-dev-menu button:hover{background:var(--sb-bg);color:var(--sb-primary)}
+.sb-dev-menu hr{border:0;border-top:1px solid var(--sb-border);margin:4px 0}
+.sb-dev-row[data-dir="wire"] .sb-dev-b{color:#8a5cf6}
+.sb-dev-empty{padding:10px;color:var(--sb-muted);font-family:var(--sb-font)}
 [hidden]{display:none}
 `;
 

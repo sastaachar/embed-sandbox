@@ -1270,14 +1270,20 @@
   var DEVF_LS = 'sb.devf.' + M.projectId;
   var DEV_CAP = 400;
   var devOn = false;
-  var devFilter = { mode: 'only', q: '', dirs: { embed: true, host: true, reply: true } };
+  var devFilter = { mode: 'only', q: '', dirs: { embed: true, host: true, reply: true, wire: true } };
   var devEntries = [];
   var devUi = null;
 
   try { devOn = localStorage.getItem(DEV_LS) === '1'; } catch (e) { /* private mode */ }
   try {
     var savedF = JSON.parse(localStorage.getItem(DEVF_LS) || 'null');
-    if (savedF && savedF.dirs) devFilter = savedF;
+    if (savedF && savedF.dirs) {
+      devFilter = savedF;
+      // A filter saved before a direction existed must not silently hide it.
+      ['embed', 'host', 'reply', 'wire'].forEach(function (d) {
+        if (devFilter.dirs[d] === undefined) devFilter.dirs[d] = true;
+      });
+    }
   } catch (e) { /* private mode */ }
 
   function devSaveFilter() {
@@ -1328,28 +1334,115 @@
    * embed it went to, and what came back.
    */
   function triggerOn(embed, hostEvent, name, payload) {
-    devPush('host', name, embedLabel(embed), payload);
-    var out;
-    try {
-      out = embed.trigger(hostEvent, payload);
-    } catch (err) {
-      devPush('reply', name, embedLabel(embed), { error: String((err && err.message) || err) });
-      throw err;
-    }
-    if (out && typeof out.then === 'function') {
-      out.then(
-        function (value) { devPush('reply', name, embedLabel(embed), value); },
-        function (err) { devPush('reply', name, embedLabel(embed), { error: String((err && err.message) || err) }); },
-      );
-    } else {
-      devPush('reply', name, embedLabel(embed), out);
-    }
-    return out;
+    // Logging lives in the patched prototype trigger(), which sees the SDK's internal
+    // fires too — doing it here as well would print everything of ours twice.
+    return embed.trigger(hostEvent, payload);
   }
 
-  /** One ALL listener per embed: it carries { type, data }, so names are real. */
+  /** Which embed an iframe belongs to, matched by the window that sent the message. */
+  function sourceLabel(source) {
+    var frames = document.querySelectorAll('iframe');
+    for (var i = 0; i < frames.length; i++) {
+      var f = frames[i];
+      var win;
+      try { win = f.contentWindow; } catch (e) { win = null; }
+      if (win !== source) continue;
+      var keys = Object.keys(slots);
+      for (var k = 0; k < keys.length; k++) {
+        var s = slots[keys[k]];
+        if (s && s.host && s.host.contains(f)) return (s.spec && s.spec.name) || keys[k];
+      }
+      // A pre-rendered iframe lives in the SDK's body-level wrapper, not in a host.
+      var wrap = f.closest('[id^="tsEmbed-pre-render-wrapper"]');
+      return wrap ? wrap.id.replace('tsEmbed-pre-render-wrapper-', 'prerender:') : 'iframe';
+    }
+    return null;
+  }
+
+  /*
+   * The wire itself. The SDK talks to the iframe over postMessage, and plenty of that
+   * traffic never surfaces as an EmbedEvent — so a capture-phase listener on our own
+   * window sees every message the iframe sends us, whatever the SDK does with it.
+   *
+   * Only this direction is interceptable. Host -> iframe goes through
+   * iframe.contentWindow.postMessage on a CROSS-ORIGIN window, which cannot be patched:
+   * the only hook is the contentWindow getter, and returning a wrapper there breaks the
+   * `event.source === iframe.contentWindow` identity the SDK routes incoming events by,
+   * which would kill the embed. Our own host events are logged at triggerOn instead.
+   */
+  window.addEventListener('message', function (ev) {
+    if (!devOn) return;
+    var from = sourceLabel(ev.source);
+    if (!from) return;
+    var d = ev.data;
+    var name = (d && typeof d === 'object' && (d.type || d.eventName)) || '(message)';
+    devPush('wire', String(name), from, d);
+  }, true);
+
+  /** Wire value -> the HostEvent member name you would write in code. */
+  function hostEventMemberName(wire) {
+    var events = (sdk && sdk.HostEvent) || {};
+    var keys = Object.keys(events);
+    for (var i = 0; i < keys.length; i++) if (events[keys[i]] === wire) return keys[i];
+    return String(wire);
+  }
+
+  /*
+   * Every host event, including the SDK's OWN. The embed classes all inherit one
+   * trigger(), and the SDK calls it internally a dozen times — UpdateEmbedParams on a
+   * pre-render reveal, Navigate, DestroyEmbed, VisibleEmbedCoordinates — none of which
+   * pass through our code. Patching the prototype that owns it catches the lot, and is
+   * far simpler than trying to intercept postMessage on a cross-origin window.
+   */
+  function patchHostTriggers(lib) {
+    ['LiveboardEmbed', 'SearchEmbed', 'SearchBarEmbed', 'AppEmbed', 'SpotterEmbed',
+      'SpotterAgentEmbed', 'ConversationEmbed', 'PreRenderedLiveboardEmbed'].forEach(function (name) {
+      var Cls = lib[name];
+      if (!Cls || !Cls.prototype) return;
+      var proto = Cls.prototype;
+      while (proto && !Object.prototype.hasOwnProperty.call(proto, 'trigger')) {
+        proto = Object.getPrototypeOf(proto);
+      }
+      if (!proto || proto.__sbDevTrigger) return;
+      proto.__sbDevTrigger = true;
+      var orig = proto.trigger;
+      proto.trigger = function (event, payload) {
+        var label = embedLabel(this);
+        var evName = hostEventMemberName(event);
+        devPush('host', evName, label, payload);
+        var out;
+        try {
+          out = orig.apply(this, arguments);
+        } catch (err) {
+          devPush('reply', evName, label, { error: String((err && err.message) || err) });
+          throw err;
+        }
+        if (out && typeof out.then === 'function') {
+          out.then(
+            function (value) { devPush('reply', evName, label, value); },
+            function (err) { devPush('reply', evName, label, { error: String((err && err.message) || err) }); },
+          );
+        } else {
+          devPush('reply', evName, label, out);
+        }
+        return out;
+      };
+    });
+  }
+
+  var devWired = typeof WeakSet === 'function' ? new WeakSet() : null;
+
+  /**
+   * One ALL listener per embed: it carries { type, data }, so names are real. Attached
+   * once and left in place — devPush is what goes quiet when dev mode is off, so
+   * toggling it back on never stacks a second listener.
+   */
   function wireDevEvents(embed) {
-    if (!devOn || !sdk || !sdk.EmbedEvent || !sdk.EmbedEvent.ALL) return;
+    if (!devOn || !embed || !sdk || !sdk.EmbedEvent || !sdk.EmbedEvent.ALL) return;
+    if (devWired) {
+      if (devWired.has(embed)) return;
+      devWired.add(embed);
+    }
     try {
       embed.on(sdk.EmbedEvent.ALL, function (payload) {
         var wire = payload && payload.type;
@@ -1602,6 +1695,7 @@
         throw new Error('The bundle at ' + M.sdkUrl + ' did not expose the tsembed global.');
       }
       sdk = lib;
+      patchHostTriggers(lib);
 
       var wanted = M.project.authType || 'None';
       var TOKEN_AUTH = ['TrustedAuthToken', 'TrustedAuthTokenCookieless'];
@@ -1980,6 +2074,7 @@
     head.appendChild(el('strong', null, 'Dev'));
     var q = el('input', 'sb-dev-q');
     q.placeholder = 'event names, comma separated';
+    q.title = 'Right-click any row to filter by it';
     q.value = devFilter.q || '';
     head.appendChild(q);
     var seg = el('div', 'sb-code-seg sb-dev-seg');
@@ -1989,7 +2084,7 @@
     head.appendChild(seg);
     var dirs = el('div', 'sb-dev-dirs');
     var boxes = {};
-    ['embed', 'host', 'reply'].forEach(function (dir) {
+    ['embed', 'host', 'reply', 'wire'].forEach(function (dir) {
       var lab = el('label');
       var cb = el('input');
       cb.type = 'checkbox';
@@ -2020,6 +2115,78 @@
       } catch (e) { return '[unserialisable]' }
     }
 
+    var menuEl = null;
+    function closeMenu() {
+      if (!menuEl) return;
+      menuEl.remove();
+      menuEl = null;
+    }
+    /** Filter straight off a row: the noisy event you want gone is the one you clicked. */
+    function openMenu(x, y, entry) {
+      closeMenu();
+      menuEl = el('div', 'sb-dev-menu');
+      var add = function (label, fn) {
+        var btn = el('button', null, label);
+        btn.onclick = function () { closeMenu(); fn(); };
+        menuEl.appendChild(btn);
+      };
+      var terms = function () {
+        return String(devFilter.q || '').split(',').map(function (t) { return t.trim(); }).filter(Boolean);
+      };
+      add('Only ' + entry.name, function () {
+        devFilter.mode = 'only';
+        devFilter.q = entry.name;
+        q.value = devFilter.q;
+        devSaveFilter();
+        redraw();
+      });
+      add('Hide ' + entry.name, function () {
+        // Hiding accumulates: silencing three chatty events should take three clicks,
+        // not three clicks and a retype.
+        var list = devFilter.mode === 'hide' ? terms() : [];
+        if (list.indexOf(entry.name) === -1) list.push(entry.name);
+        devFilter.mode = 'hide';
+        devFilter.q = list.join(', ');
+        q.value = devFilter.q;
+        devSaveFilter();
+        redraw();
+      });
+      add('Only ' + entry.dir + ' events', function () {
+        Object.keys(devFilter.dirs).forEach(function (d) { devFilter.dirs[d] = d === entry.dir; });
+        Object.keys(boxes).forEach(function (d) { boxes[d].checked = devFilter.dirs[d]; });
+        devSaveFilter();
+        redraw();
+      });
+      menuEl.appendChild(el('hr'));
+      add('Copy payload', function () {
+        var text;
+        try { text = JSON.stringify(entry.payload, null, 2); } catch (e) { text = String(entry.payload); }
+        if (navigator.clipboard) navigator.clipboard.writeText(text);
+      });
+      add('Log to console', function () {
+        console.log('[' + NS + '] ' + entry.dir + ' ' + entry.name, entry.payload);
+      });
+      menuEl.appendChild(el('hr'));
+      add('Clear filter', function () {
+        devFilter.q = '';
+        Object.keys(devFilter.dirs).forEach(function (d) { devFilter.dirs[d] = true; });
+        Object.keys(boxes).forEach(function (d) { boxes[d].checked = true; });
+        q.value = '';
+        devSaveFilter();
+        redraw();
+      });
+      document.body.appendChild(menuEl);
+      // Place it at the pointer, pulled back inside the viewport when near an edge.
+      var w = menuEl.offsetWidth;
+      var h = menuEl.offsetHeight;
+      menuEl.style.left = Math.min(x, window.innerWidth - w - 8) + 'px';
+      menuEl.style.top = Math.min(y, window.innerHeight - h - 8) + 'px';
+    }
+
+    document.addEventListener('click', closeMenu);
+    document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape') closeMenu(); });
+    list.addEventListener('scroll', closeMenu);
+
     function row(entry) {
       var line = el('div', 'sb-dev-row');
       line.setAttribute('data-dir', entry.dir);
@@ -2027,10 +2194,15 @@
       var hh = String(t.getHours()).padStart(2, '0') + ':' + String(t.getMinutes()).padStart(2, '0') +
         ':' + String(t.getSeconds()).padStart(2, '0');
       line.appendChild(el('span', 'sb-dev-t', hh));
-      line.appendChild(el('span', 'sb-dev-b', entry.dir === 'embed' ? '↓' : entry.dir === 'host' ? '↑' : '↳'));
+      var badge = entry.dir === 'embed' ? '↓' : entry.dir === 'host' ? '↑' : entry.dir === 'wire' ? '⇄' : '↳';
+      line.appendChild(el('span', 'sb-dev-b', badge));
       line.appendChild(el('span', 'sb-dev-n', entry.name));
       if (entry.target) line.appendChild(el('span', 'sb-dev-tg', entry.target));
       line.appendChild(el('span', 'sb-dev-p', preview(entry.payload)));
+      line.oncontextmenu = function (ev) {
+        ev.preventDefault();
+        openMenu(ev.clientX, ev.clientY, entry);
+      };
       line.onclick = function () {
         var open = line.nextSibling && line.nextSibling.className === 'sb-dev-full';
         if (open) { line.nextSibling.remove(); return; }
@@ -2044,6 +2216,8 @@
 
     function append(entry) {
       if (!devPasses(entry)) { count.textContent = String(devEntries.length); return; }
+      var empty = list.querySelector('.sb-dev-empty');
+      if (empty) empty.remove();
       var atBottom = list.scrollTop + list.clientHeight >= list.scrollHeight - 24;
       list.appendChild(row(entry));
       count.textContent = String(devEntries.length);
@@ -2054,7 +2228,17 @@
       onlyBtn.className = devFilter.mode === 'only' ? 'on' : '';
       hideBtn.className = devFilter.mode === 'hide' ? 'on' : '';
       clear(list);
-      devEntries.filter(devPasses).forEach(function (e) { list.appendChild(row(e)); });
+      var shown = devEntries.filter(devPasses);
+      shown.forEach(function (e) { list.appendChild(row(e)); });
+      if (!shown.length) {
+        // Turning dev mode on mid-session cannot recover what already fired, so say so
+        // rather than showing an empty box that looks broken.
+        list.appendChild(el(
+          'div',
+          'sb-dev-empty',
+          devEntries.length ? 'Nothing matches this filter.' : 'Listening — events appear as they fire.',
+        ));
+      }
       count.textContent = String(devEntries.length);
       list.scrollTop = list.scrollHeight;
     }
@@ -2182,6 +2366,19 @@
       devLab.appendChild(document.createTextNode('Dev mode — log host events, their replies, and embed events'));
       body.appendChild(devLab);
       fields.dev = devBox;
+      // Ticking it is the whole gesture: no Load, and embeds already on the page get
+      // their listener now rather than after a re-mount.
+      devBox.onchange = function () {
+        devOn = !!devBox.checked;
+        try { localStorage.setItem(DEV_LS, devOn ? '1' : '0'); } catch (e) { /* private mode */ }
+        if (devOn) {
+          openDevPanel();
+          Object.keys(slots).forEach(function (k) { wireDevEvents(slots[k].embed); });
+        } else if (devUi) {
+          devUi.root.remove();
+          devUi = null;
+        }
+      };
 
       var list = store.variables();
       if (list.length) {
@@ -2210,17 +2407,6 @@
         };
       }
       writeInitOverride(Object.keys(patch).length ? patch : null);
-      if (fields.dev) {
-        var wantDev = !!fields.dev.checked;
-        if (wantDev !== devOn) {
-          devOn = wantDev;
-          try { localStorage.setItem(DEV_LS, devOn ? '1' : '0'); } catch (e) { /* private mode */ }
-          // Listeners attach as an embed mounts, so turning it on re-mounts.
-          if (devOn) openDevPanel();
-          else if (devUi) { devUi.root.remove(); devUi = null; }
-          Object.keys(slots).forEach(releaseSlot);
-        }
-      }
       Object.keys(fields.vars).forEach(function (key) {
         var raw = fields.vars[key].value;
         if (raw === '') resetVar(key);
