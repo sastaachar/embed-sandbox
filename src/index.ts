@@ -646,6 +646,27 @@ No build step, no deploy.</p>
   <div class="mini"><button id="again">← Create another</button></div>
 </section>
 
+<section class="card" id="mcpCard" style="margin-top:18px">
+  <h2>Connect an AI agent</h2>
+  <p class="sub">One MCP server builds and edits every project here — and an agent can create its own,
+  no token needed to start.</p>
+  <button id="mcpBtn">Connect to MCP</button>
+  <div id="mcpPanel" hidden style="margin-top:16px">
+    <div class="kv">
+      <div class="k">MCP server URL</div>
+      <div class="copyrow"><code id="mcpTop"></code><button data-copy="mcpTop">Copy</button></div>
+    </div>
+    <div class="kv" style="margin-top:12px">
+      <div class="k">Add it to Claude Code</div>
+      <div class="copyrow"><code id="mcpAddTop"></code><button data-copy="mcpAddTop">Copy</button></div>
+    </div>
+    <p class="fine" style="margin-top:12px">Every tool takes <code class="inline">projectId</code> and
+    <code class="inline">token</code>, so one server covers all your projects. Agents should call
+    <code class="inline">read_manual</code> once first — the same document is at
+    <a href="/mcp/manual.md">/mcp/manual.md</a>.</p>
+  </div>
+</section>
+
 <details class="api">
   <summary>Prefer the API?</summary>
   <p>Same thing over HTTP:</p>
@@ -699,6 +720,15 @@ No build step, no deploy.</p>
     navigator.clipboard.writeText(text).then(function(){
       var was = b.textContent; b.textContent = 'Copied'; setTimeout(function(){ b.textContent = was; }, 1300);
     });
+  });
+
+  var mcpUrlTop = location.origin + '/mcp';
+  $('mcpTop').textContent = mcpUrlTop;
+  $('mcpAddTop').textContent = 'claude mcp add --transport http embed-sandbox ' + mcpUrlTop;
+  $('mcpBtn').addEventListener('click', function(){
+    var panel = $('mcpPanel');
+    panel.hidden = !panel.hidden;
+    $('mcpBtn').textContent = panel.hidden ? 'Connect to MCP' : 'Hide MCP details';
   });
 
   function myBuilds(){
