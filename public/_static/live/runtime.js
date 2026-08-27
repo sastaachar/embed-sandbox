@@ -1049,6 +1049,7 @@
   function wireAll(embed, spec) {
     wireHandlers(embed, spec.embedEventHandlers);
     wireErrorSurface(embed);
+    wireDevEvents(embed);
   }
 
   /**
@@ -1260,6 +1261,105 @@
 
   // ------------------------------------------------------------------ actions
 
+  // ------------------------------------------------------------------- dev
+  // Dev mode is per visitor, per project: it costs nothing when off, and what it
+  // shows — every host event we fire, its reply, and every embed event received —
+  // is only useful to whoever is building the demo.
+
+  var DEV_LS = 'sb.dev.' + M.projectId;
+  var DEVF_LS = 'sb.devf.' + M.projectId;
+  var DEV_CAP = 400;
+  var devOn = false;
+  var devFilter = { mode: 'only', q: '', dirs: { embed: true, host: true, reply: true } };
+  var devEntries = [];
+  var devUi = null;
+
+  try { devOn = localStorage.getItem(DEV_LS) === '1'; } catch (e) { /* private mode */ }
+  try {
+    var savedF = JSON.parse(localStorage.getItem(DEVF_LS) || 'null');
+    if (savedF && savedF.dirs) devFilter = savedF;
+  } catch (e) { /* private mode */ }
+
+  function devSaveFilter() {
+    try { localStorage.setItem(DEVF_LS, JSON.stringify(devFilter)); } catch (e) { /* private mode */ }
+  }
+
+  /** The SDK sends wire values ("load"); the name you would write is the member. */
+  function eventMemberName(wire) {
+    var events = (sdk && sdk.EmbedEvent) || {};
+    var keys = Object.keys(events);
+    for (var i = 0; i < keys.length; i++) if (events[keys[i]] === wire) return keys[i];
+    return String(wire);
+  }
+
+  /** Which embed on the page this instance is, for the log. */
+  function embedLabel(embed) {
+    var keys = Object.keys(slots);
+    for (var i = 0; i < keys.length; i++) {
+      var s = slots[keys[i]];
+      if (s && s.embed === embed) return (s.spec && s.spec.name) || keys[i];
+    }
+    return 'embed';
+  }
+
+  function devPush(dir, name, target, payload) {
+    if (!devOn) return;
+    devEntries.push({ at: new Date(), dir: dir, name: String(name), target: target || '', payload: payload });
+    if (devEntries.length > DEV_CAP) devEntries.splice(0, devEntries.length - DEV_CAP);
+    if (devUi) devUi.append(devEntries[devEntries.length - 1]);
+  }
+
+  function devPasses(entry) {
+    if (!devFilter.dirs[entry.dir]) return false;
+    var terms = String(devFilter.q || '')
+      .split(',')
+      .map(function (t) { return t.trim().toLowerCase(); })
+      .filter(Boolean);
+    if (!terms.length) return true;
+    var hay = (entry.name + ' ' + entry.target).toLowerCase();
+    var hit = terms.some(function (t) { return hay.indexOf(t) !== -1; });
+    // "only these" versus "everything but these" — the same box, two meanings.
+    return devFilter.mode === 'hide' ? !hit : hit;
+  }
+
+  /**
+   * THE place a host event leaves this page. Everything routes through here — buttons,
+   * event-handler actions, the value store's sinks — so dev mode sees every fire, which
+   * embed it went to, and what came back.
+   */
+  function triggerOn(embed, hostEvent, name, payload) {
+    devPush('host', name, embedLabel(embed), payload);
+    var out;
+    try {
+      out = embed.trigger(hostEvent, payload);
+    } catch (err) {
+      devPush('reply', name, embedLabel(embed), { error: String((err && err.message) || err) });
+      throw err;
+    }
+    if (out && typeof out.then === 'function') {
+      out.then(
+        function (value) { devPush('reply', name, embedLabel(embed), value); },
+        function (err) { devPush('reply', name, embedLabel(embed), { error: String((err && err.message) || err) }); },
+      );
+    } else {
+      devPush('reply', name, embedLabel(embed), out);
+    }
+    return out;
+  }
+
+  /** One ALL listener per embed: it carries { type, data }, so names are real. */
+  function wireDevEvents(embed) {
+    if (!devOn || !sdk || !sdk.EmbedEvent || !sdk.EmbedEvent.ALL) return;
+    try {
+      embed.on(sdk.EmbedEvent.ALL, function (payload) {
+        var wire = payload && payload.type;
+        devPush('embed', wire ? eventMemberName(wire) : '(event)', embedLabel(embed), payload);
+      });
+    } catch (err) {
+      console.warn('[' + NS + '] dev mode could not subscribe to EmbedEvent.ALL', err);
+    }
+  }
+
   function trigger(name, payload, targets, scope, storeKey) {
     var embeds = embedsFor(targets, scope);
     if (!embeds.length || !sdk) return false;
@@ -1276,7 +1376,7 @@
     var sent = false;
     embeds.forEach(function (embed) {
       try {
-        var out = embed.trigger(events[name], payload);
+        var out = triggerOn(embed, events[name], name, payload);
         sent = true;
         // Some host events answer — GetFilters, GetParameters, GetTML. Keeping that
         // answer is the only way a page can show what the embed actually thinks.
@@ -1872,6 +1972,114 @@
     return { root: root, load: load };
   }
 
+  // ---------------------------------------------------------------- dev panel
+
+  function devOverlay() {
+    var root = el('div', 'sb-dev');
+    var head = el('div', 'sb-dev-head');
+    head.appendChild(el('strong', null, 'Dev'));
+    var q = el('input', 'sb-dev-q');
+    q.placeholder = 'event names, comma separated';
+    q.value = devFilter.q || '';
+    head.appendChild(q);
+    var seg = el('div', 'sb-code-seg sb-dev-seg');
+    var onlyBtn = el('button', null, 'Only');
+    var hideBtn = el('button', null, 'Hide');
+    seg.appendChild(onlyBtn); seg.appendChild(hideBtn);
+    head.appendChild(seg);
+    var dirs = el('div', 'sb-dev-dirs');
+    var boxes = {};
+    ['embed', 'host', 'reply'].forEach(function (dir) {
+      var lab = el('label');
+      var cb = el('input');
+      cb.type = 'checkbox';
+      cb.checked = devFilter.dirs[dir] !== false;
+      lab.appendChild(cb);
+      lab.appendChild(document.createTextNode(dir));
+      dirs.appendChild(lab);
+      boxes[dir] = cb;
+      cb.onchange = function () { devFilter.dirs[dir] = cb.checked; devSaveFilter(); redraw(); };
+    });
+    head.appendChild(dirs);
+    var count = el('span', 'sb-dev-count');
+    head.appendChild(count);
+    var clearBtn = el('button', null, 'Clear');
+    var closeBtn = el('button', null, 'Close');
+    head.appendChild(clearBtn); head.appendChild(closeBtn);
+    var list = el('div', 'sb-dev-list');
+    root.appendChild(head); root.appendChild(list);
+    document.body.appendChild(root);
+
+    function preview(value) {
+      if (value === undefined) return '';
+      if (value === null) return 'null';
+      if (typeof value !== 'object') return String(value);
+      try {
+        var s = JSON.stringify(value);
+        return s.length > 90 ? s.slice(0, 89) + '…' : s;
+      } catch (e) { return '[unserialisable]' }
+    }
+
+    function row(entry) {
+      var line = el('div', 'sb-dev-row');
+      line.setAttribute('data-dir', entry.dir);
+      var t = entry.at;
+      var hh = String(t.getHours()).padStart(2, '0') + ':' + String(t.getMinutes()).padStart(2, '0') +
+        ':' + String(t.getSeconds()).padStart(2, '0');
+      line.appendChild(el('span', 'sb-dev-t', hh));
+      line.appendChild(el('span', 'sb-dev-b', entry.dir === 'embed' ? '↓' : entry.dir === 'host' ? '↑' : '↳'));
+      line.appendChild(el('span', 'sb-dev-n', entry.name));
+      if (entry.target) line.appendChild(el('span', 'sb-dev-tg', entry.target));
+      line.appendChild(el('span', 'sb-dev-p', preview(entry.payload)));
+      line.onclick = function () {
+        var open = line.nextSibling && line.nextSibling.className === 'sb-dev-full';
+        if (open) { line.nextSibling.remove(); return; }
+        var full = el('pre', 'sb-dev-full');
+        try { full.textContent = JSON.stringify(entry.payload, null, 2); }
+        catch (e) { full.textContent = String(entry.payload); }
+        list.insertBefore(full, line.nextSibling);
+      };
+      return line;
+    }
+
+    function append(entry) {
+      if (!devPasses(entry)) { count.textContent = String(devEntries.length); return; }
+      var atBottom = list.scrollTop + list.clientHeight >= list.scrollHeight - 24;
+      list.appendChild(row(entry));
+      count.textContent = String(devEntries.length);
+      if (atBottom) list.scrollTop = list.scrollHeight;
+    }
+
+    function redraw() {
+      onlyBtn.className = devFilter.mode === 'only' ? 'on' : '';
+      hideBtn.className = devFilter.mode === 'hide' ? 'on' : '';
+      clear(list);
+      devEntries.filter(devPasses).forEach(function (e) { list.appendChild(row(e)); });
+      count.textContent = String(devEntries.length);
+      list.scrollTop = list.scrollHeight;
+    }
+
+    var qTimer = null;
+    q.oninput = function () {
+      devFilter.q = q.value;
+      clearTimeout(qTimer);
+      qTimer = setTimeout(function () { devSaveFilter(); redraw(); }, 150);
+    };
+    onlyBtn.onclick = function () { devFilter.mode = 'only'; devSaveFilter(); redraw(); };
+    hideBtn.onclick = function () { devFilter.mode = 'hide'; devSaveFilter(); redraw(); };
+    clearBtn.onclick = function () { devEntries = []; redraw(); };
+    closeBtn.onclick = function () { root.remove(); devUi = null; };
+    redraw();
+    return { root: root, append: append, redraw: redraw };
+  }
+
+  function openDevPanel() {
+    if (!devOn) return;
+    if (!devUi) devUi = devOverlay();
+  }
+
+  if (devOn) openDevPanel();
+
   // ---------------------------------------------------------------- settings
   // Same shape as the ‹/› overlay, because it is the same kind of thing: a panel the
   // page owns, off to one side, that a visitor opens when they need it.
@@ -1963,6 +2171,18 @@
       sel.onchange = syncCreds;
       syncCreds();
 
+      body.appendChild(el('p', 'sb-set-h', 'Developer'));
+      var devLab = el('label', 'sb-set-row');
+      var devBox = el('input');
+      devBox.type = 'checkbox';
+      devBox.id = 'sb-dev-toggle';
+      devBox.checked = devOn;
+      devBox.style.width = 'auto';
+      devLab.appendChild(devBox);
+      devLab.appendChild(document.createTextNode('Dev mode — log host events, their replies, and embed events'));
+      body.appendChild(devLab);
+      fields.dev = devBox;
+
       var list = store.variables();
       if (list.length) {
         body.appendChild(el('p', 'sb-set-h', 'Variables'));
@@ -1990,6 +2210,17 @@
         };
       }
       writeInitOverride(Object.keys(patch).length ? patch : null);
+      if (fields.dev) {
+        var wantDev = !!fields.dev.checked;
+        if (wantDev !== devOn) {
+          devOn = wantDev;
+          try { localStorage.setItem(DEV_LS, devOn ? '1' : '0'); } catch (e) { /* private mode */ }
+          // Listeners attach as an embed mounts, so turning it on re-mounts.
+          if (devOn) openDevPanel();
+          else if (devUi) { devUi.root.remove(); devUi = null; }
+          Object.keys(slots).forEach(releaseSlot);
+        }
+      }
       Object.keys(fields.vars).forEach(function (key) {
         var raw = fields.vars[key].value;
         if (raw === '') resetVar(key);

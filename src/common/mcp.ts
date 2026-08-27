@@ -229,6 +229,10 @@ browser; reset(key) drops theirs. The panel also lets a visitor supply the
 thoughtSpotHost/auth the project lacks — kept in their browser, never sent here —
 and a page that cannot init() yet says "Settings needed" instead of failing
 silently. showSettings:false hides the gear, showCode:false the ‹/›.
+The settings panel also has a DEV MODE toggle (per visitor): it opens a log of every
+host event this page fires, the reply that came back, and every embed event received —
+each row naming which embed it belongs to — with an Only/Hide name filter and
+per-direction toggles. Nothing is logged when it is off.
 
 theme tokens: colorPrimary, colorPrimaryText, colorBg, colorSurface, colorText,
 colorMuted, colorBorder, fontFamily, fontHeading, radius, maxWidth, headerHeight,

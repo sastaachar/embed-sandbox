@@ -645,6 +645,14 @@ their browser, never sent to us — and set any variable. Until init() has what 
 needs, embeds say *"Settings needed"* and the panel opens itself rather than the page
 failing silently. `showSettings: false` and `showCode: false` hide either button.
 
+The panel also carries a **dev mode** toggle. With it on, the page logs every host
+event it fires, the reply that came back, and every embed event received — each row
+saying which embed it belongs to — filterable by name (**Only** these / **Hide**
+these) and by direction. Host events all pass through one `triggerOn(embed, event,
+payload)` choke point, which is what makes the fire-and-reply pairing possible;
+embed events come from a single `EmbedEvent.ALL` listener per embed, whose payload
+carries the event name. Off by default, and it costs nothing when off.
+
 ### The advisory edit lock
 
 An agent editing over MCP announces itself first (`lock_project`, or
