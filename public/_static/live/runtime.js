@@ -1315,15 +1315,70 @@
     if (devUi) devUi.append(devEntries[devEntries.length - 1]);
   }
 
+  /**
+   * A filter term is a plain substring, or /a regex/ with optional flags. Compiled once
+   * per filter string rather than per row, and remembered so every call site — typing,
+   * the right-click menu, a reload — gets the same parse without asking.
+   */
+  var devMatchQ = null;
+  var devMatchers = [];
+  var devBadRe = false;
+
+  function devTerms() {
+    if (devFilter.q === devMatchQ) return devMatchers;
+    devMatchQ = devFilter.q;
+    devBadRe = false;
+    devMatchers = String(devFilter.q || '')
+      .split(',')
+      .map(function (t) { return t.trim(); })
+      .filter(Boolean)
+      .map(function (t) {
+        var re = /^\/(.*)\/([a-z]*)$/.exec(t);
+        if (re) {
+          try {
+            var compiled = new RegExp(re[1], re[2] || 'i');
+            return function (hay) { return compiled.test(hay); };
+          } catch (e) {
+            // An unfinished pattern is a typo in progress, not a reason to hide rows.
+            devBadRe = true;
+            return function () { return false; };
+          }
+        }
+        var lower = t.toLowerCase();
+        return function (hay) { return hay.toLowerCase().indexOf(lower) !== -1; };
+      });
+    return devMatchers;
+  }
+
+  /**
+   * Everything a filter can match: the event name, which embed it belongs to, AND the
+   * payload — so a word that only appears inside the data still finds its rows.
+   * Stringified once per entry and kept, since filtering re-reads it on every keystroke.
+   */
+  function devHaystack(entry) {
+    if (entry.hay === undefined) {
+      var body = '';
+      if (entry.payload !== undefined && entry.payload !== null) {
+        if (typeof entry.payload === 'object') {
+          try { body = JSON.stringify(entry.payload); } catch (e) { body = ''; }
+        } else {
+          body = String(entry.payload);
+        }
+        if (body.length > 4000) body = body.slice(0, 4000);
+      }
+      // Name FIRST and no direction prefix, so /^Load/ anchors against the event name
+      // — direction already has its own toggles.
+      entry.hay = entry.name + ' ' + entry.target + ' ' + body;
+    }
+    return entry.hay;
+  }
+
   function devPasses(entry) {
     if (!devFilter.dirs[entry.dir]) return false;
-    var terms = String(devFilter.q || '')
-      .split(',')
-      .map(function (t) { return t.trim().toLowerCase(); })
-      .filter(Boolean);
-    if (!terms.length) return true;
-    var hay = (entry.name + ' ' + entry.target).toLowerCase();
-    var hit = terms.some(function (t) { return hay.indexOf(t) !== -1; });
+    var tests = devTerms();
+    if (!tests.length) return true;
+    var hay = devHaystack(entry);
+    var hit = tests.some(function (test) { return test(hay); });
     // "only these" versus "everything but these" — the same box, two meanings.
     return devFilter.mode === 'hide' ? !hit : hit;
   }
@@ -2105,8 +2160,9 @@
     var head = el('div', 'sb-dev-head');
     head.appendChild(el('strong', null, 'Dev'));
     var q = el('input', 'sb-dev-q');
-    q.placeholder = 'event names, comma separated';
-    q.title = 'Right-click any row to filter by it';
+    q.placeholder = 'name, payload text or /regex/';
+    q.title = 'Matches the event name, the embed, and the payload. Substrings or /regex/i, ' +
+      'comma separated. Right-click any row to filter by it.';
     q.value = devFilter.q || '';
     head.appendChild(q);
     var seg = el('div', 'sb-code-seg sb-dev-seg');
@@ -2272,6 +2328,11 @@
         ));
       }
       count.textContent = String(devEntries.length);
+      q.style.borderColor = devBadRe ? '#c0392b' : '';
+      q.title = devBadRe
+        ? 'That regex does not compile yet'
+        : 'Matches the event name, the embed, and the payload. Substrings or /regex/i, ' +
+          'comma separated. Right-click any row to filter by it.';
       list.scrollTop = list.scrollHeight;
     }
 
