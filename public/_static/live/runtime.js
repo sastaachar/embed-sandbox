@@ -1370,14 +1370,46 @@
    * `event.source === iframe.contentWindow` identity the SDK routes incoming events by,
    * which would kill the embed. Our own host events are logged at triggerOn instead.
    */
+  // An embed event the host ANSWERS (EmbedIframeCenter, EmbedHeight,
+  // RequestVisibleEmbedCoordinates…) is replied to through a responder the SDK builds
+  // from the incoming message's port — not through trigger(). Remember which event a
+  // port belongs to, so a send on it can be named.
+  var portEvents = typeof WeakMap === 'function' ? new WeakMap() : null;
+
   window.addEventListener('message', function (ev) {
     if (!devOn) return;
-    var from = sourceLabel(ev.source);
-    if (!from) return;
     var d = ev.data;
     var name = (d && typeof d === 'object' && (d.type || d.eventName)) || '(message)';
+    var from = sourceLabel(ev.source);
+    // Recorded before the source check: a reply is worth naming even when the sender
+    // is a window we cannot label.
+    if (portEvents && ev.ports && ev.ports.length && ev.ports[0]) {
+      portEvents.set(ev.ports[0], { name: String(name), target: from || 'iframe' });
+    }
+    if (!from) return;
     devPush('wire', String(name), from, d);
   }, true);
+
+  /*
+   * Every responder reply, whoever sends it — ours, or the SDK's own internal handler.
+   * MessagePort is OUR realm's class even when the port arrived from the iframe, so
+   * patching its prototype is safe, unlike the cross-origin contentWindow.
+   */
+  (function patchPortReplies() {
+    if (typeof MessagePort !== 'function' || !MessagePort.prototype || MessagePort.prototype.__sbDevPort) return;
+    MessagePort.prototype.__sbDevPort = true;
+    var orig = MessagePort.prototype.postMessage;
+    MessagePort.prototype.postMessage = function (data) {
+      if (devOn) {
+        var known = portEvents && portEvents.get(this);
+        var name = (known && known.name)
+          || (data && typeof data === 'object' && (data.type || data.eventName))
+          || '(responder)';
+        devPush('reply', String(name), (known && known.target) || 'iframe', data);
+      }
+      return orig.apply(this, arguments);
+    };
+  })();
 
   /** Wire value -> the HostEvent member name you would write in code. */
   function hostEventMemberName(wire) {
