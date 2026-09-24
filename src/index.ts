@@ -629,6 +629,7 @@ padding:20px 0;border-top:1px solid var(--panel-rule)}
 font:500 12px/1.6 var(--mono);color:var(--clay);letter-spacing:.06em}
 .steps h3{margin:0 0 9px;font-size:14px;font-weight:700;letter-spacing:-.005em}
 .steps p{margin:9px 0 0;font-size:13px;line-height:1.55;color:var(--panel-muted)}
+.steps p.also{margin:14px 0 7px;font-size:12px}
 .steps a{color:var(--clay);text-underline-offset:3px}
 .agent .copyrow code{background:var(--panel-code);border-color:var(--panel-rule);color:var(--panel-ink);
 white-space:pre-wrap;overflow-x:visible;word-break:break-word}
@@ -708,29 +709,22 @@ padding:14px;overflow-x:auto;font:400 12px/1.6 var(--mono);color:var(--panel-ink
 <aside class="agent">
   <p class="eyebrow">Model Context Protocol</p>
   <h2>Connect Claude</h2>
-  <p class="pl">Claude builds and edits the pages for you — <b>and can create its own project</b>,
-  so there is nothing to paste before you start.</p>
+  <p class="pl">Claude builds and edits the pages for you.</p>
 
   <ol class="steps">
     <li>
       <div>
-        <h3>Add the server to Claude Code</h3>
+        <h3>Add the server</h3>
         <div class="copyrow"><code id="mcpAddTop"></code><button data-copy="mcpAddTop">Copy</button></div>
-      </div>
-    </li>
-    <li>
-      <div>
-        <h3>Or point any MCP client here</h3>
+        <p class="also">Any other MCP client — streamable HTTP:</p>
         <div class="copyrow"><code id="mcpTop"></code><button data-copy="mcpTop">Copy</button></div>
-        <p>Streamable HTTP. One server covers every project — each tool takes
-        <code class="inline">projectId</code> and <code class="inline">token</code>.</p>
       </div>
     </li>
     <li>
       <div>
-        <h3>Ask it to read the manual first</h3>
-        <p>The <code class="inline">read_manual</code> tool returns the contracts and worked
-        examples an agent otherwise guesses at. Same document at <a href="/mcp/manual.md">/mcp/manual.md</a>.</p>
+        <h3>Enjoy building</h3>
+        <p>Ask for the demo you want. No token to start — Claude creates the project,
+        and the server hands it the <a href="/mcp/manual.md">manual</a>.</p>
       </div>
     </li>
   </ol>
