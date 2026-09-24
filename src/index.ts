@@ -587,22 +587,12 @@ button:disabled{opacity:.6;cursor:progress}
 .fine{margin:12px 0 0;font-size:12.5px;color:var(--muted)}
 .err{margin:14px 0 0;font-size:14px;font-weight:600;color:var(--red)}
 
-.flag{display:block;margin:0;font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--red)}
-.kv{margin-top:22px}
-.k{display:block;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:7px}
 .copyrow{display:flex;gap:0;align-items:stretch}
 .copyrow code{flex:1;min-width:0;overflow-x:auto;white-space:nowrap;
 font:400 13px/1.5 var(--mono);padding:10px 12px;
 background:var(--surface);border:1px solid var(--rule);color:var(--ink)}
 .copyrow button{flex:0 0 auto;padding:0 14px;font-size:12px;font-weight:700;
 letter-spacing:.08em;text-transform:uppercase;border-left:0}
-.warn{margin:9px 0 0;font-size:12.5px;color:var(--muted);max-width:52ch}
-.warn b{color:var(--ink)}
-.actions{display:flex;gap:12px;margin-top:24px;flex-wrap:wrap}
-.actions .btn{flex:1 1 170px}
-.mini{margin-top:26px}
-.mini button{border:0;padding:0;font-size:13px;font-weight:600;color:var(--muted);text-decoration:underline;text-underline-offset:3px}
-.mini button:hover{background:none;color:var(--red)}
 
 .mine-row{display:flex;align-items:baseline;gap:14px;padding:13px 0;border-bottom:1px solid var(--rule)}
 .mine-name{flex:1;min-width:0}
@@ -630,6 +620,16 @@ font:500 12px/1.6 var(--mono);color:var(--clay);letter-spacing:.06em}
 .steps h3{margin:0 0 9px;font-size:14px;font-weight:700;letter-spacing:-.005em}
 .steps p{margin:9px 0 0;font-size:13px;line-height:1.55;color:var(--panel-muted)}
 .steps p.also{margin:14px 0 7px;font-size:12px}
+.how{display:flex;margin:0 0 14px}
+.how button{padding:7px 15px;font:700 11px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;
+border:1px solid var(--panel-rule);background:transparent;color:var(--panel-muted);border-radius:0}
+.how button+button{border-left:0}
+.how button:hover{color:var(--panel-ink)}
+.how button[aria-pressed="true"]{background:var(--clay);border-color:var(--clay);color:var(--panel)}
+.howline{display:grid;grid-template-columns:16px minmax(0,1fr);gap:8px;
+margin:0 0 7px;font-size:13px;line-height:1.55;color:var(--panel-muted)}
+.hn{font:500 12px/1.6 var(--mono);color:var(--clay)}
+.howline b{color:var(--panel-ink);font-weight:600}
 .steps a{color:var(--clay);text-underline-offset:3px}
 .agent .copyrow code{background:var(--panel-code);border-color:var(--panel-rule);color:var(--panel-ink);
 white-space:pre-wrap;overflow-x:visible;word-break:break-word}
@@ -654,7 +654,7 @@ padding:14px;overflow-x:auto;font:400 12px/1.6 var(--mono);color:var(--panel-ink
 <main class="make">
   <p class="eyebrow">ThoughtSpot · Visual Embed SDK</p>
   <h1>embed-sandbox</h1>
-  <p class="deck">Shareable ThoughtSpot embed demos — <em>built in a visual builder, or by Claude.</em></p>
+  <p class="deck">Shareable ThoughtSpot embed demos — <em>built in a visual builder, or by an AI agent.</em></p>
 
   <section id="createCard">
     <h2 class="sec">Create a project</h2>
@@ -677,27 +677,7 @@ padding:14px;overflow-x:auto;font:400 12px/1.6 var(--mono);color:var(--panel-ink
     </details>
     <button id="createBtn" class="primary">Create project</button>
     <p class="err" id="err" hidden></p>
-    <p class="fine">Free · the edit token is shown once.</p>
-  </section>
-
-  <section id="doneCard" hidden>
-    <h2 class="sec">Project created</h2>
-    <div class="kv">
-      <span class="k">Edit token</span>
-      <div class="copyrow"><code id="tok"></code><button data-copy="tok">Copy</button></div>
-      <p class="warn"><b>Shown once.</b> It authorises every edit to this project — save it now.
-      This browser also remembers it under Your builds.</p>
-    </div>
-    <div class="actions">
-      <a id="openBuilder" class="btn primary" target="_blank" rel="noopener">Open the builder</a>
-      <a id="openSite" class="btn" target="_blank" rel="noopener">View live site</a>
-    </div>
-    <div class="kv">
-      <span class="k">MCP endpoint for this project</span>
-      <div class="copyrow"><code id="mcp"></code><button data-copy="mcp">Copy</button></div>
-      <p class="warn">Send the token as <code class="inline">Authorization: Bearer &lt;edit token&gt;</code>.</p>
-    </div>
-    <div class="mini"><button id="again">Create another</button></div>
+    <p class="fine">Free · the edit token is copied to your clipboard on the way in.</p>
   </section>
 
   <section id="mineCard" hidden>
@@ -708,21 +688,41 @@ padding:14px;overflow-x:auto;font:400 12px/1.6 var(--mono);color:var(--panel-ink
 
 <aside class="agent">
   <p class="eyebrow">Model Context Protocol</p>
-  <h2>Build it with Claude</h2>
+  <h2>Build it with an AI agent</h2>
+  <p class="pl">Claude, ChatGPT, Cursor — any MCP client.</p>
 
   <ol class="steps">
     <li>
       <div>
-        <h3>Connect to Claude</h3>
-        <div class="copyrow"><code id="mcpAddTop"></code><button data-copy="mcpAddTop">Copy</button></div>
-        <p class="also">Any other MCP client — streamable HTTP:</p>
+        <h3>Connect your agent</h3>
+        <div class="how">
+          <button data-how="claude" aria-pressed="true">Claude</button>
+          <button data-how="chatgpt" aria-pressed="false">ChatGPT</button>
+        </div>
+        <div id="how-claude">
+          <div class="copyrow"><code id="mcpAddTop"></code><button data-copy="mcpAddTop">Copy</button></div>
+          <p>Claude Desktop or claude.ai: Settings → Connectors → Add custom connector,
+          with the URL below.</p>
+        </div>
+        <div id="how-chatgpt" hidden>
+          <p class="howline"><span class="hn">1</span><span>Settings → turn on <b>Developer
+          mode</b>. On a Business or Enterprise workspace an admin enables it under
+          Permissions &amp; Roles.</span></p>
+          <p class="howline"><span class="hn">2</span><span><b>Apps &amp; connectors → +</b>,
+          then create an app.</span></p>
+          <p class="howline"><span class="hn">3</span><span>Paste the URL below, including the
+          <code class="inline">/mcp</code> path. No authentication.</span></p>
+          <p>The menu keeps moving — <a href="https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt"
+          target="_blank" rel="noopener">OpenAI's guide</a> is canonical.</p>
+        </div>
+        <p class="also">MCP server URL — any client:</p>
         <div class="copyrow"><code id="mcpTop"></code><button data-copy="mcpTop">Copy</button></div>
       </div>
     </li>
     <li>
       <div>
         <h3>Build a ThoughtSpot embed project</h3>
-        <p>Ask for the demo you want. No token to start — Claude creates the project,
+        <p>Ask for the demo you want. No token to start — the agent creates the project,
         and the server hands it the <a href="/mcp/manual.md">manual</a>.</p>
       </div>
     </li>
@@ -764,19 +764,15 @@ padding:14px;overflow-x:auto;font:400 12px/1.6 var(--mono);color:var(--panel-ink
       .then(function(res){
         if (!res.ok) { fail(res.j && res.j.error ? res.j.error : 'Could not create the project.'); return; }
         var d = res.j;
-        $('tok').textContent = d.editToken;
-        $('mcp').textContent = d.mcpUrl;
-        $('openBuilder').href = d.builderUrl;
-        $('openSite').href = d.siteUrl;
         try {
           localStorage.setItem('sb.tok.' + d.projectId, d.editToken);
           var typed = ($('name').value || '').trim();
           if (typed) localStorage.setItem('sb.name.' + d.projectId, typed);
-        } catch (e) { /* private mode: the token stays shown-once only */ }
-        renderMine();
-        $('createCard').hidden = true;
-        $('doneCard').hidden = false;
-        window.scrollTo(0, 0);
+        } catch (e) { /* private mode: the clipboard copy is the only surviving copy */ }
+        // The token rides in the fragment, which never reaches the server; the builder
+        // reads it and strips it from the address bar.
+        var open = function(){ location.replace('/build/' + d.projectId + '#t=' + encodeURIComponent(d.editToken)); };
+        try { navigator.clipboard.writeText(d.editToken).then(open, open); } catch (e2) { open(); }
       })
       .catch(function(){ fail('Network error — please try again.'); });
   });
@@ -840,11 +836,15 @@ padding:14px;overflow-x:auto;font:400 12px/1.6 var(--mono);color:var(--panel-ink
   }
   renderMine();
 
-  $('again').addEventListener('click', function(){
-    $('doneCard').hidden = true; $('createCard').hidden = false;
-    $('name').value = ''; $('host').value = ''; $('sdk').value = '';
-    btn.disabled = false; btn.textContent = 'Create project'; err.hidden = true;
-    $('name').focus();
+  var how = document.querySelectorAll('.how button');
+  Array.prototype.forEach.call(how, function(t){
+    t.addEventListener('click', function(){
+      Array.prototype.forEach.call(how, function(o){
+        var on = o === t;
+        o.setAttribute('aria-pressed', on ? 'true' : 'false');
+        $('how-' + o.getAttribute('data-how')).hidden = !on;
+      });
+    });
   });
 })();
 </script>
