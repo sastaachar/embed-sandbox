@@ -521,159 +521,227 @@ function landing(origin: string): string {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>embed-sandbox</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
-:root{--bg:#f7f8fb;--card:#fff;--ink:#0f1320;--muted:#5c6470;--line:#e5e8ee;
---accent:#2770ef;--accent-ink:#fff;--code:#f2f4f8;--ok:#127a44;--danger:#c0392b;
---shadow:0 1px 2px rgba(16,24,64,.04),0 12px 32px rgba(16,24,64,.08);--radius:14px}
-@media (prefers-color-scheme:dark){:root{--bg:#0d0f14;--card:#161922;--ink:#e9ecf3;
---muted:#98a0b0;--line:#262b37;--accent:#5b95f5;--accent-ink:#0b1220;--code:#1d212b;
---ok:#4fae7d;--danger:#e06a5f;--shadow:0 1px 2px rgba(0,0,0,.4),0 18px 40px rgba(0,0,0,.5)}}
+:root{
+  --paper:#faf8f4; --surface:#fff; --ink:#121110; --muted:#5f5a52; --rule:#e3ded4;
+  --red:#c4291c; --red-ink:#fff;
+  --panel:#17140f; --panel-ink:#f2ede3; --panel-muted:#9e968a; --panel-rule:#2e2a23;
+  --panel-code:#221d17; --clay:#e08a63;
+  --sans:'Archivo','Helvetica Neue',Helvetica,Arial,sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --paper:#0e1013; --surface:#171a1f; --ink:#eceae4; --muted:#949ba6; --rule:#262a31;
+  --red:#f0604f; --red-ink:#150a08;
+  --panel:#1c1712; --panel-rule:#332c24; --panel-code:#272019;
+}}
+:root[data-theme="dark"]{
+  --paper:#0e1013; --surface:#171a1f; --ink:#eceae4; --muted:#949ba6; --rule:#262a31;
+  --red:#f0604f; --red-ink:#150a08;
+  --panel:#1c1712; --panel-rule:#332c24; --panel-code:#272019;
+}
 *,*::before,*::after{box-sizing:border-box}
-body{margin:0;padding:40px 20px 64px;font:15px/1.6 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
-color:var(--ink);background:
-radial-gradient(1100px 520px at 50% -260px,color-mix(in srgb,var(--accent) 16%,transparent),transparent 70%),
-var(--bg);display:flex;justify-content:center}
-main{max-width:640px;width:100%}
-.badge{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:600;
-letter-spacing:.02em;color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent);
-border:1px solid color-mix(in srgb,var(--accent) 30%,transparent);border-radius:999px;padding:5px 12px}
-h1{font-size:2.1rem;letter-spacing:-.03em;margin:16px 0 8px}
-.lede{color:var(--muted);font-size:1.05rem;margin:0 0 28px;max-width:52ch}
-.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
-padding:22px 22px 20px;box-shadow:var(--shadow)}
-.card h2{margin:0 0 4px;font-size:1.15rem;letter-spacing:-.01em}
-.card .sub{margin:0 0 18px;color:var(--muted);font-size:.9rem}
-label{display:block;font-size:.82rem;font-weight:600;color:var(--muted);margin:14px 0 6px}
-input{width:100%;font:inherit;padding:10px 12px;border:1px solid var(--line);border-radius:9px;
-background:var(--bg);color:var(--ink)}
-input:focus{outline:2px solid color-mix(in srgb,var(--accent) 45%,transparent);outline-offset:1px;border-color:var(--accent)}
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-details.adv{margin-top:14px}details.adv>summary{cursor:pointer;color:var(--muted);font-size:.85rem;
-list-style:none}details.adv>summary::-webkit-details-marker{display:none}
-details.adv>summary::before{content:"▸ ";font-size:.8em}
-details.adv[open]>summary::before{content:"▾ "}
-button,.btn{font:inherit;font-weight:600;cursor:pointer;border-radius:10px;padding:11px 16px;
-border:1px solid var(--line);background:var(--card);color:var(--ink);text-decoration:none;
+html{-webkit-text-size-adjust:100%}
+body{margin:0;min-height:100vh;background:var(--paper);color:var(--ink);
+font:400 15px/1.6 var(--sans);
+display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr)}
+:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.agent :focus-visible{outline-color:var(--clay)}
+
+.make{padding:clamp(30px,4.6vw,66px) clamp(22px,4.6vw,66px) 72px;min-width:0}
+.eyebrow{margin:0;font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+h1{margin:14px 0 0;font-weight:800;font-size:clamp(40px,7.4vw,86px);line-height:.94;letter-spacing:-.04em}
+.deck{margin:20px 0 0;max-width:24ch;font-weight:500;font-size:clamp(19px,2.1vw,28px);
+line-height:1.25;letter-spacing:-.015em;color:var(--ink)}
+.deck em{font-style:normal;color:var(--muted)}
+
+h2.sec{margin:54px 0 0;padding-top:12px;border-top:2px solid var(--ink);
+font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}
+
+.field{margin-top:18px}
+label{display:block;font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+input{width:100%;font:400 16px/1.4 var(--sans);padding:11px 12px;color:var(--ink);
+background:var(--surface);border:1px solid var(--rule);border-radius:0}
+input::placeholder{color:var(--muted);opacity:.7}
+input:focus{outline:2px solid var(--ink);outline-offset:-1px;border-color:var(--ink)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}
+@media (max-width:520px){.grid2{grid-template-columns:1fr}}
+
+details.adv{margin-top:16px}
+details.adv>summary{cursor:pointer;list-style:none;font-size:13px;font-weight:600;color:var(--muted)}
+details.adv>summary::-webkit-details-marker{display:none}
+details.adv>summary::before{content:"+";display:inline-block;width:1.1em;font-weight:700;color:var(--muted)}
+details.adv[open]>summary::before{content:"\\2212"}
+
+button,.btn{font:600 15px/1 var(--sans);cursor:pointer;border-radius:0;padding:14px 20px;
+border:1px solid var(--ink);background:transparent;color:var(--ink);text-decoration:none;
 display:inline-flex;align-items:center;justify-content:center;gap:8px}
-button.primary,.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
-button:hover,.btn:hover{filter:brightness(.97)}
-button:disabled{opacity:.55;cursor:progress}
-#createBtn{width:100%;margin-top:20px;padding:13px;font-size:1rem}
-.fine{color:var(--muted);font-size:.8rem;margin:12px 2px 0;text-align:center}
-.err{color:var(--danger);font-size:.88rem;margin:12px 0 0}
-.ok-badge{display:inline-flex;align-items:center;gap:8px;color:var(--ok);font-weight:700;font-size:1.05rem}
-.kv{margin-top:16px}
-.kv .k{font-size:.75rem;font-weight:700;letter-spacing:.03em;text-transform:uppercase;color:var(--muted)}
-.copyrow{display:flex;gap:8px;margin-top:5px}
-.copyrow code{flex:1;min-width:0;overflow-x:auto;white-space:nowrap;background:var(--code);
-border:1px solid var(--line);border-radius:9px;padding:9px 11px;
-font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}
-.copyrow button{padding:9px 12px;flex:0 0 auto}
-.warn{margin-top:6px;font-size:.78rem;color:var(--danger)}
-.actions{display:flex;gap:10px;margin-top:20px;flex-wrap:wrap}
-.actions .btn{flex:1;min-width:150px}
-details.agent,details.api{margin-top:16px}
-details.agent>summary,details.api>summary{cursor:pointer;font-weight:600;font-size:.9rem}
-details.agent p,details.api p{color:var(--muted);font-size:.88rem}
-pre{background:var(--code);border:1px solid var(--line);border-radius:9px;padding:13px 14px;
-overflow-x:auto;font:12.5px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink)}
-code.inline{background:var(--code);border:1px solid var(--line);border-radius:5px;padding:1px 5px;font-size:.9em}
-.mini{margin-top:14px;text-align:center}
-.mini button{background:none;border:0;color:var(--accent);padding:6px;font-size:.88rem}
-.mine-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--line)}
-.mine-row:first-of-type{border-top:0}
+.primary{background:var(--red);border-color:var(--red);color:var(--red-ink)}
+button:hover,.btn:hover{filter:brightness(1.08)}
+.btn:not(.primary):hover,button:not(.primary):hover{background:var(--ink);color:var(--paper)}
+button:disabled{opacity:.6;cursor:progress}
+#createBtn{margin-top:22px;width:100%;padding:17px;font-size:17px;letter-spacing:-.01em}
+.fine{margin:12px 0 0;font-size:12.5px;color:var(--muted)}
+.err{margin:14px 0 0;font-size:14px;font-weight:600;color:var(--red)}
+
+.flag{display:block;margin:0;font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--red)}
+.kv{margin-top:22px}
+.k{display:block;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:7px}
+.copyrow{display:flex;gap:0;align-items:stretch}
+.copyrow code{flex:1;min-width:0;overflow-x:auto;white-space:nowrap;
+font:400 13px/1.5 var(--mono);padding:10px 12px;
+background:var(--surface);border:1px solid var(--rule);color:var(--ink)}
+.copyrow button{flex:0 0 auto;padding:0 14px;font-size:12px;font-weight:700;
+letter-spacing:.08em;text-transform:uppercase;border-left:0}
+.warn{margin:9px 0 0;font-size:12.5px;color:var(--muted);max-width:52ch}
+.warn b{color:var(--ink)}
+.actions{display:flex;gap:12px;margin-top:24px;flex-wrap:wrap}
+.actions .btn{flex:1 1 170px}
+.mini{margin-top:26px}
+.mini button{border:0;padding:0;font-size:13px;font-weight:600;color:var(--muted);text-decoration:underline;text-underline-offset:3px}
+.mini button:hover{background:none;color:var(--red)}
+
+.mine-row{display:flex;align-items:baseline;gap:14px;padding:13px 0;border-bottom:1px solid var(--rule)}
 .mine-name{flex:1;min-width:0}
-.mine-name b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.mine-name code{font-size:11px;color:var(--muted)}
-.mine-row a{font-size:.85rem;color:var(--accent);text-decoration:none;white-space:nowrap}
-.mine-row a:hover{text-decoration:underline}
-.mine-x{background:none;border:0;color:var(--muted);cursor:pointer;font-size:12px;padding:2px 6px}
-.mine-x:hover{color:var(--danger)}
-</style></head><body><main>
-<span class="badge">ThoughtSpot · Visual Embed SDK</span>
-<h1>embed-sandbox</h1>
-<p class="lede">Spin up a shareable ThoughtSpot embed demo in one click. You get a live site,
-a visual builder, and an MCP endpoint an AI agent can edit — all driven by one JSON document.
-No build step, no deploy.</p>
+.mine-name b{display:block;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mine-name code{font:400 11.5px/1.4 var(--mono);color:var(--muted)}
+.mine-row a{font-size:13px;font-weight:600;color:var(--ink);text-decoration:none;
+white-space:nowrap;border-bottom:2px solid var(--red)}
+.mine-row a:hover{color:var(--red)}
+.mine-x{border:0;padding:2px 4px;font-size:13px;color:var(--muted);background:none}
+.mine-x:hover{background:none;color:var(--red)}
 
-<section class="card" id="mineCard" hidden style="margin-bottom:18px">
-  <h2>Your builds</h2>
-  <p class="sub">Projects this browser holds an edit token for.</p>
-  <div id="mineList"></div>
-</section>
+.agent{background:var(--panel);color:var(--panel-ink);border-left:3px solid var(--red);
+padding:clamp(30px,4.6vw,66px) clamp(22px,4.6vw,56px) 72px;min-width:0;
+position:sticky;top:0;align-self:start;min-height:100vh;max-height:100vh;overflow-y:auto}
+.agent .eyebrow{color:var(--clay)}
+.agent h2{margin:14px 0 0;font-weight:800;font-size:clamp(30px,3.4vw,42px);
+line-height:1;letter-spacing:-.035em}
+.agent .pl{margin:16px 0 0;max-width:40ch;font-size:15px;color:var(--panel-muted)}
+.agent .pl b{color:var(--panel-ink);font-weight:600}
+.steps{list-style:none;margin:34px 0 0;padding:0;counter-reset:s}
+.steps li{display:grid;grid-template-columns:30px minmax(0,1fr);gap:14px;
+padding:20px 0;border-top:1px solid var(--panel-rule)}
+.steps li::before{counter-increment:s;content:counter(s,decimal-leading-zero);
+font:500 12px/1.6 var(--mono);color:var(--clay);letter-spacing:.06em}
+.steps h3{margin:0 0 9px;font-size:14px;font-weight:700;letter-spacing:-.005em}
+.steps p{margin:9px 0 0;font-size:13px;line-height:1.55;color:var(--panel-muted)}
+.steps a{color:var(--clay);text-underline-offset:3px}
+.agent .copyrow code{background:var(--panel-code);border-color:var(--panel-rule);color:var(--panel-ink);
+white-space:pre-wrap;overflow-x:visible;word-break:break-word}
+.agent .copyrow button{border-color:var(--panel-rule);color:var(--panel-ink)}
+.agent .copyrow button:hover{background:var(--clay);border-color:var(--clay);color:var(--panel)}
+code.inline{font:400 .88em/1 var(--mono);background:var(--panel-code);
+border:1px solid var(--panel-rule);padding:2px 5px}
+.make code.inline{background:var(--surface);border-color:var(--rule)}
+details.api{margin-top:30px;border-top:1px solid var(--panel-rule);padding-top:18px}
+details.api>summary{cursor:pointer;font-size:13px;font-weight:600;color:var(--panel-muted)}
+details.api>summary:hover{color:var(--panel-ink)}
+pre{margin:14px 0 0;background:var(--panel-code);border:1px solid var(--panel-rule);
+padding:14px;overflow-x:auto;font:400 12px/1.6 var(--mono);color:var(--panel-ink)}
 
-<section class="card" id="createCard">
-  <h2>Create a project</h2>
-  <p class="sub">Name it and go. You can point it at your cluster now or later in the builder.</p>
-  <label for="name">Project name</label>
-  <input id="name" placeholder="My demo" autocomplete="off">
-  <details class="adv">
-    <summary>ThoughtSpot host &amp; SDK version (optional)</summary>
-    <div class="grid2" style="margin-top:12px">
-      <div>
-        <label for="host">ThoughtSpot host</label>
-        <input id="host" placeholder="https://your.thoughtspot.cloud" autocomplete="off">
-      </div>
-      <div>
-        <label for="sdk">SDK version</label>
-        <input id="sdk" placeholder="latest" autocomplete="off">
-      </div>
+@media (max-width:940px){
+  body{grid-template-columns:1fr;align-content:start}
+  .agent{position:static;min-height:0;max-height:none;border-left:0;border-top:3px solid var(--red)}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style></head><body>
+
+<main class="make">
+  <p class="eyebrow">ThoughtSpot · Visual Embed SDK</p>
+  <h1>embed-sandbox</h1>
+  <p class="deck">Shareable ThoughtSpot embed demos — <em>built in a visual builder, or by Claude over MCP.</em></p>
+
+  <section id="createCard">
+    <h2 class="sec">Create a project</h2>
+    <div class="field">
+      <label for="name">Project name</label>
+      <input id="name" placeholder="My demo" autocomplete="off">
     </div>
-  </details>
-  <button id="createBtn" class="primary">Create project</button>
-  <p class="err" id="err" hidden></p>
-  <p class="fine">Free to create · the edit token is shown once, so keep it.</p>
-</section>
+    <details class="adv">
+      <summary>ThoughtSpot host &amp; SDK version</summary>
+      <div class="grid2">
+        <div>
+          <label for="host">ThoughtSpot host</label>
+          <input id="host" placeholder="https://your.thoughtspot.cloud" autocomplete="off">
+        </div>
+        <div>
+          <label for="sdk">SDK version</label>
+          <input id="sdk" placeholder="latest" autocomplete="off">
+        </div>
+      </div>
+    </details>
+    <button id="createBtn" class="primary">Create project</button>
+    <p class="err" id="err" hidden></p>
+    <p class="fine">Free · the edit token is shown once.</p>
+  </section>
 
-<section class="card" id="doneCard" hidden>
-  <span class="ok-badge">✓ Project created</span>
-  <div class="kv">
-    <div class="k">Edit token — shown once</div>
-    <div class="copyrow"><code id="tok"></code><button data-copy="tok">Copy</button></div>
-    <div class="warn">Save this now — it authorises edits and is never shown again. (Also remembered in this browser, under “Your builds”.)</div>
-  </div>
-  <div class="actions">
-    <a id="openBuilder" class="btn primary" target="_blank" rel="noopener">Open the builder →</a>
-    <a id="openSite" class="btn" target="_blank" rel="noopener">View live site</a>
-  </div>
-  <details class="agent">
-    <summary>Connect an AI agent (MCP)</summary>
-    <p>Point your MCP client here and it can build the pages for you:</p>
-    <div class="copyrow"><code id="mcp"></code><button data-copy="mcp">Copy</button></div>
-    <p style="margin-top:8px">Auth header: <code class="inline">Authorization: Bearer &lt;edit token&gt;</code>.
-    The manual is at <code class="inline">/mcp/manual.md</code> — agents should read it once (the <code class="inline">read_manual</code> tool) before anything else.</p>
-  </details>
-  <div class="mini"><button id="again">← Create another</button></div>
-</section>
-
-<section class="card" id="mcpCard" style="margin-top:18px">
-  <h2>Connect an AI agent</h2>
-  <p class="sub">One MCP server builds and edits every project here — and an agent can create its own,
-  no token needed to start.</p>
-  <button id="mcpBtn">Connect to MCP</button>
-  <div id="mcpPanel" hidden style="margin-top:16px">
+  <section id="doneCard" hidden>
+    <h2 class="sec">Project created</h2>
     <div class="kv">
-      <div class="k">MCP server URL</div>
-      <div class="copyrow"><code id="mcpTop"></code><button data-copy="mcpTop">Copy</button></div>
+      <span class="k">Edit token</span>
+      <div class="copyrow"><code id="tok"></code><button data-copy="tok">Copy</button></div>
+      <p class="warn"><b>Shown once.</b> It authorises every edit to this project — save it now.
+      This browser also remembers it under Your builds.</p>
     </div>
-    <div class="kv" style="margin-top:12px">
-      <div class="k">Add it to Claude Code</div>
-      <div class="copyrow"><code id="mcpAddTop"></code><button data-copy="mcpAddTop">Copy</button></div>
+    <div class="actions">
+      <a id="openBuilder" class="btn primary" target="_blank" rel="noopener">Open the builder</a>
+      <a id="openSite" class="btn" target="_blank" rel="noopener">View live site</a>
     </div>
-    <p class="fine" style="margin-top:12px">Every tool takes <code class="inline">projectId</code> and
-    <code class="inline">token</code>, so one server covers all your projects. Agents should call
-    <code class="inline">read_manual</code> once first — the same document is at
-    <a href="/mcp/manual.md">/mcp/manual.md</a>.</p>
-  </div>
-</section>
+    <div class="kv">
+      <span class="k">MCP endpoint for this project</span>
+      <div class="copyrow"><code id="mcp"></code><button data-copy="mcp">Copy</button></div>
+      <p class="warn">Send the token as <code class="inline">Authorization: Bearer &lt;edit token&gt;</code>.</p>
+    </div>
+    <div class="mini"><button id="again">Create another</button></div>
+  </section>
 
-<details class="api">
-  <summary>Prefer the API?</summary>
-  <p>Same thing over HTTP:</p>
-  <pre>curl -X POST ${origin}/api/projects \\
+  <section id="mineCard" hidden>
+    <h2 class="sec">Your builds</h2>
+    <div id="mineList"></div>
+  </section>
+</main>
+
+<aside class="agent">
+  <p class="eyebrow">Model Context Protocol</p>
+  <h2>Connect Claude</h2>
+  <p class="pl">Claude builds and edits the pages for you — <b>and can create its own project</b>,
+  so there is nothing to paste before you start.</p>
+
+  <ol class="steps">
+    <li>
+      <div>
+        <h3>Add the server to Claude Code</h3>
+        <div class="copyrow"><code id="mcpAddTop"></code><button data-copy="mcpAddTop">Copy</button></div>
+      </div>
+    </li>
+    <li>
+      <div>
+        <h3>Or point any MCP client here</h3>
+        <div class="copyrow"><code id="mcpTop"></code><button data-copy="mcpTop">Copy</button></div>
+        <p>Streamable HTTP. One server covers every project — each tool takes
+        <code class="inline">projectId</code> and <code class="inline">token</code>.</p>
+      </div>
+    </li>
+    <li>
+      <div>
+        <h3>Ask it to read the manual first</h3>
+        <p>The <code class="inline">read_manual</code> tool returns the contracts and worked
+        examples an agent otherwise guesses at. Same document at <a href="/mcp/manual.md">/mcp/manual.md</a>.</p>
+      </div>
+    </li>
+  </ol>
+
+  <details class="api">
+    <summary>Prefer plain HTTP?</summary>
+    <pre>curl -X POST ${origin}/api/projects \\
   -H 'content-type: application/json' \\
   -d '{"name":"My demo","thoughtSpotHost":"https://your.thoughtspot.cloud","sdkVersion":"1.51.0"}'</pre>
-</details>
+  </details>
+</aside>
 
 <script>
 (function(){
@@ -725,11 +793,6 @@ No build step, no deploy.</p>
   var mcpUrlTop = location.origin + '/mcp';
   $('mcpTop').textContent = mcpUrlTop;
   $('mcpAddTop').textContent = 'claude mcp add --transport http embed-sandbox ' + mcpUrlTop;
-  $('mcpBtn').addEventListener('click', function(){
-    var panel = $('mcpPanel');
-    panel.hidden = !panel.hidden;
-    $('mcpBtn').textContent = panel.hidden ? 'Connect to MCP' : 'Hide MCP details';
-  });
 
   function myBuilds(){
     var out = [];
@@ -765,7 +828,7 @@ No build step, no deploy.</p>
       var live = document.createElement('a');
       live.href = '/p/' + p.id + '/'; live.target = '_blank'; live.rel = 'noopener'; live.textContent = 'Live site';
       var x = document.createElement('button'); x.className = 'mine-x';
-      x.textContent = '\u2715'; x.title = 'Forget this build (removes the token from this browser)';
+      x.textContent = '\\u2715'; x.title = 'Forget this build (removes the token from this browser)';
       x.addEventListener('click', function(){
         try { localStorage.removeItem('sb.tok.' + p.id); localStorage.removeItem('sb.name.' + p.id); } catch (e) {}
         renderMine();
@@ -785,7 +848,7 @@ No build step, no deploy.</p>
   });
 })();
 </script>
-</main></body></html>`;
+</body></html>`;
 }
 
 // ------------------------------------------------------------------- connect
