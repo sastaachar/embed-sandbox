@@ -654,7 +654,7 @@ padding:14px;overflow-x:auto;font:400 12px/1.6 var(--mono);color:var(--panel-ink
 <main class="make">
   <p class="eyebrow">ThoughtSpot · Visual Embed SDK</p>
   <h1>embed-sandbox</h1>
-  <p class="deck">Shareable ThoughtSpot embed demos — <em>built in a visual builder, or by Claude over MCP.</em></p>
+  <p class="deck">Shareable ThoughtSpot embed demos — <em>built in a visual builder, or by Claude.</em></p>
 
   <section id="createCard">
     <h2 class="sec">Create a project</h2>
@@ -708,13 +708,12 @@ padding:14px;overflow-x:auto;font:400 12px/1.6 var(--mono);color:var(--panel-ink
 
 <aside class="agent">
   <p class="eyebrow">Model Context Protocol</p>
-  <h2>Connect Claude</h2>
-  <p class="pl">Claude builds and edits the pages for you.</p>
+  <h2>Build it with Claude</h2>
 
   <ol class="steps">
     <li>
       <div>
-        <h3>Add the server</h3>
+        <h3>Connect to Claude</h3>
         <div class="copyrow"><code id="mcpAddTop"></code><button data-copy="mcpAddTop">Copy</button></div>
         <p class="also">Any other MCP client — streamable HTTP:</p>
         <div class="copyrow"><code id="mcpTop"></code><button data-copy="mcpTop">Copy</button></div>
@@ -722,9 +721,16 @@ padding:14px;overflow-x:auto;font:400 12px/1.6 var(--mono);color:var(--panel-ink
     </li>
     <li>
       <div>
-        <h3>Enjoy building</h3>
+        <h3>Build a ThoughtSpot embed project</h3>
         <p>Ask for the demo you want. No token to start — Claude creates the project,
         and the server hands it the <a href="/mcp/manual.md">manual</a>.</p>
+      </div>
+    </li>
+    <li>
+      <div>
+        <h3>Share the live link</h3>
+        <p>Every project publishes at <code class="inline">/p/&lt;id&gt;/</code>. Viewers see the
+        finished site, never an editor, and it re-renders within ~5s of any edit.</p>
       </div>
     </li>
   </ol>
