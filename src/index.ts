@@ -351,7 +351,7 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
         headers: {
           authorization: `Bearer ${token}`,
           accept: 'application/json',
-          'user-agent': 'embed-sandbox/1.0 (+https://embed-sandbox.justin-mathew.workers.dev)',
+          'user-agent': 'embed-sandbox/1.0 (+https://embed-sandbox.spotz.workers.dev)',
           ...(request.method === 'POST' ? { 'content-type': 'application/json' } : {}),
         },
         body: request.method === 'POST' ? await request.text() : undefined,

@@ -111,7 +111,7 @@ export async function mintToken(key: string, opts: MintOptions): Promise<string>
       headers: {
         'content-type': 'application/json',
         accept: 'application/json',
-        'user-agent': 'embed-sandbox/1.0 (+https://embed-sandbox.justin-mathew.workers.dev)',
+        'user-agent': 'embed-sandbox/1.0 (+https://embed-sandbox.spotz.workers.dev)',
       },
       body: JSON.stringify(body),
     });

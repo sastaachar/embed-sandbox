@@ -222,6 +222,19 @@ required for every write; reads are public because sharing is the point.
        browser: auth { tokenSource: "credentials", username, secret, secretType }. It does
        ship the secret in the public page, so use a low-privilege user and say so. "proxy"
        stays the right default for any cluster this server CAN reach.
+   WHICH KIND OF CLUSTER IS THIS? It decides everything above, so work it out before you
+   debug anything. search_metadata tells you: source "cluster" means this server reached it,
+   and on a failure clusterReached says whether it answered at all.
+
+   | kind | how you can tell | what to do |
+   |---|---|---|
+   | Public SaaS (*.thoughtspot.cloud and friends) | source: "cluster" | Nothing special. Keep auth.tokenSource "proxy" so the secret stays server-side. search_metadata reads ids live. |
+   | Dev / Nebula SaaS cluster | public https, but leases expire and clusters hibernate | Same as public while it is up. If it worked before and clusterReached is suddenly false, suspect an expired lease or a hibernating cluster BEFORE you suspect the password. |
+   | Internal or VPN-only (*.internal.*, private DNS, an RFC1918 address) | clusterReached: false, "could not reach" | This server will never reach it. Send the connect link, have them press "Sync from cluster" for ids, and set auth.tokenSource "credentials", because "proxy" cannot work. |
+   | On their own machine (http://localhost:<port>) | host starts http://localhost | Same as VPN-only, plus one thing you must say out loud: the published link will only work in THEIR browser. Nobody else can open the demo. |
+   | Untrusted TLS (self-signed, expired, wrong name) | clusterReached: false, a TLS error in clusterError | Same as VPN-only. If the cluster also serves a plain HTTP port, that one does work from here. |
+   | Reachable but refusing (401 / 403) | clusterReached: true | The network is fine and the credentials are not. Say which username was tried and send the connect link so they re-enter it. Do not switch auth types to get around it. |
+
 3. lock_project → announce yourself BEFORE the first edit. The builder warns the human
    ("being vibe-coded", with an Edit anyway escape); every save refreshes the lock, and
    it expires 5 minutes after your last edit anyway.
@@ -781,7 +794,7 @@ const TOOLS = [
   {
     name: 'search_metadata',
     description:
-      "Real ids from the cluster — liveboards, answers, worksheets/tables — so an id is never guessed. Asks the cluster directly, minting a token from the credentials in this project's config (auth.tokenSource \"credentials\"). If the cluster is unreachable from the server — a private IP, or a certificate it will not skip — it falls back to the catalog the builder cached from the browser, and says which source answered.",
+      "Real ids from the cluster: liveboards, answers, worksheets/tables, so an id is never guessed. Asks the cluster directly, minting a token from the credentials stored for this project. Answers with the source: \"cluster\" means this server reached it; \"catalog\" means it fell back to what the builder cached from the human's browser. On a failure, clusterReached tells you which kind of problem you have: false is an internal/VPN-only host, a localhost cluster or an untrusted certificate, and no amount of retrying will fix it; true with a 401 is simply the wrong credentials. Either way the result carries a connectionHelp block with a ready-to-send connect link and a whichKindOfCluster guide, so relay it rather than guessing.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -958,6 +971,29 @@ function connectionHelp(origin: string, projectId: string, editToken?: string | 
       'That does ship the secret in the public page, so use a low-privilege user and say so ' +
       'out loud. Keep "proxy" for any cluster this server CAN reach, where it is the safer ' +
       'default because the secret never leaves the server.',
+    whichKindOfCluster: {
+      publicSaaS:
+        'search_metadata returns source "cluster". Everything works. Keep auth.tokenSource ' +
+        '"proxy": the secret stays on this server and never reaches a visitor.',
+      devOrNebula:
+        'Public https, but these clusters expire and hibernate. If it worked before and ' +
+        'clusterReached is suddenly false, suspect the lease before the password.',
+      internalOrVpn:
+        'clusterReached: false, "could not reach". This server will never reach it. Connect ' +
+        'link, then "Sync from cluster" for ids, and auth.tokenSource "credentials" rather ' +
+        'than "proxy".',
+      onTheirMachine:
+        'host is http://localhost:<port>. Same as VPN-only, and say out loud that the ' +
+        'published link only works in THEIR browser. Nobody else can open the demo.',
+      untrustedTls:
+        'clusterReached: false with a TLS error. Self-signed, expired or wrong-name ' +
+        'certificate. Same as VPN-only; a plain HTTP port on the same cluster does work ' +
+        'from here.',
+      reachableButRefusing:
+        'clusterReached: true with 401 or 403. The network is fine, the credentials are ' +
+        'not. Name the username that was tried and send the link so they re-enter it. Do ' +
+        'not change auth types to get around it.',
+    },
     note: 'Username + password are required for search_metadata and any cluster-backed ' +
       'feature. For auth types other than TrustedAuthTokenCookieless/TrustedAuthToken the ' +
       'connect link keeps them server-side (not shipped to visitors). For token auth ' +
