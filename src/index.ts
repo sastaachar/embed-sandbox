@@ -564,6 +564,7 @@ line-height:1.3;letter-spacing:-.015em;color:var(--ink)}
 
 h2.sec{margin:50px 0 0;padding-top:14px;border-top:1px solid var(--rule);
 font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+#createCard{margin-top:44px;padding-top:6px;border-top:1px solid var(--rule)}
 
 .field{margin-top:18px}
 label{display:block;font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin-bottom:7px}
@@ -663,10 +664,9 @@ border-radius:var(--r);padding:15px;overflow-x:auto;font:400 12px/1.6 var(--mono
 <main class="make">
   <p class="eyebrow">ThoughtSpot · Visual Embed SDK</p>
   <h1>embed-sandbox</h1>
-  <p class="deck">Shareable ThoughtSpot embed demos — <em>built in a visual builder, or by an AI agent.</em></p>
+  <p class="deck">Create a project — <em>or connect an AI agent and let it build one.</em></p>
 
   <section id="createCard">
-    <h2 class="sec">Create a project</h2>
     <div class="field">
       <label for="name">Project name</label>
       <input id="name" placeholder="My demo" autocomplete="off">
