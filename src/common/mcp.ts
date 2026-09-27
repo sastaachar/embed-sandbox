@@ -821,7 +821,36 @@ const TOOLS = [
  * generated from the live TOOLS array, so the file can never drift from the
  * definitions an agent actually receives.
  */
-export function manualMarkdown(): string {
+/**
+ * Prepended only when this document is served over HTTP, i.e. a human pasted the URL at an
+ * agent that is not connected yet. An agent that got here through read_manual already has
+ * the tools and does not need to be told to add the server.
+ */
+function addTheServerFirst(origin: string): string {
+  const url = `${origin}/mcp`;
+  return [
+    '# Someone pasted this URL at you',
+    '',
+    'This is an **MCP server**, not a web page. Fetching it again just hands you this same',
+    'document. Its tools only exist once your client is connected to it, so add it through',
+    'your own connector flow first, then start at "The workflow that works" below.',
+    '',
+    `- **Claude Code**: \`claude mcp add --transport http embed-sandbox ${url}\``,
+    `- **Claude Desktop or claude.ai**: Settings, Connectors, Add custom connector, URL \`${url}\``,
+    `- **ChatGPT**: Settings, turn on Developer mode, then Apps & connectors, +, URL \`${url}\`, no authentication`,
+    `- **Cursor, Windsurf, Zed and the rest**: add a streamable-HTTP MCP server with URL \`${url}\``,
+    `- **Anything else**: streamable HTTP at \`${url}\`. Writes send \`Authorization: Bearer <edit token>\`; reads need no token.`,
+    '',
+    'Say which one you did. If your client cannot add MCP servers at all, tell the human that',
+    'plainly rather than trying to drive the HTTP API by hand, and point them at the "Prefer',
+    `plain HTTP?" section of ${origin} instead.`,
+    '',
+    '---',
+    '',
+  ].join('\n');
+}
+
+export function manualMarkdown(addServerOrigin?: string | null): string {
   const ref = TOOLS.map((t) => {
     const schema = t.inputSchema as unknown as {
       properties?: Record<string, { type?: string; description?: string; enum?: string[] }>;
@@ -835,6 +864,7 @@ export function manualMarkdown(): string {
     return `### ${t.name}\n\n${t.description}\n${args.length ? `\nArguments:\n\n${args.join('\n')}\n` : '\nNo arguments.\n'}`;
   }).join('\n');
   return (
+    (addServerOrigin ? addTheServerFirst(addServerOrigin) : '') +
     `${MANUAL}\n\n## Tool reference\n\n` +
     'Generated from the live tool definitions, so it cannot drift. Mounted at /mcp ' +
     '(not pinned to a project), every tool except read_manual and create_project also ' +
@@ -1293,7 +1323,7 @@ export async function handleMcp(
   if (request.method === 'GET') {
     // The manual, for a human in a browser or an agent probing before it connects.
     // Also mounted at /mcp/manual.md, the linkable spelling.
-    return new Response(manualMarkdown(), {
+    return new Response(manualMarkdown(new URL(request.url).origin), {
       headers: { 'content-type': 'text/markdown; charset=utf-8', 'cache-control': 'no-store' },
     });
   }

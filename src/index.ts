@@ -1063,7 +1063,7 @@ export default {
         const projectId = segments[1] || '';
         if (!projectId) return await handleMcp(request, env, null);
         if (projectId === 'manual.md') {
-          return new Response(manualMarkdown(), {
+          return new Response(manualMarkdown(url.origin), {
             headers: { 'content-type': 'text/markdown; charset=utf-8', 'cache-control': 'no-store' },
           });
         }
