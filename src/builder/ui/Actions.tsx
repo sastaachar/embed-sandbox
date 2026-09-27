@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { Doc, EmbedAction, Page } from './types';
 import { CommitInput, Field } from './Modal';
+import { highlight } from './highlight';
 
 /*
  * One editor for the one action vocabulary, used by buttons and by embed event handlers.
@@ -19,7 +20,12 @@ const TYPES: Array<{ type: EmbedAction['type']; label: string; blurb: string }> 
   { type: 'open-modal', label: 'Open modal', blurb: 'Show a modal defined on this page' },
   { type: 'close-modal', label: 'Close modal', blurb: 'Close whatever is open' },
   { type: 'open-url', label: 'Open URL', blurb: 'Leave the site' },
+  { type: 'run-code', label: 'Run custom code', blurb: 'JavaScript in an isolated sandbox; return a value' },
+  { type: 'remount', label: 'Reload embed', blurb: 'Rebuild the frame and re-run its before-render code' },
+  { type: 'update-embed', label: 'Update embed live (experimental)', blurb: 'Re-apply the config to the running frame — not public SDK API' },
 ];
+
+const DEFAULT_CODE = 'return payload;';
 
 /** Falls back to the names worth offering when the SDK has not loaded yet. */
 const COMMON_HOST_EVENTS = [
@@ -39,6 +45,9 @@ function emptyAction(type: EmbedAction['type']): EmbedAction {
     case 'set': return { type, params: { key: '', value: '' } };
     case 'open-modal': return { type, params: { name: '' } };
     case 'close-modal': return { type, params: {} };
+    case 'run-code': return { type, params: { code: DEFAULT_CODE } };
+    case 'remount': return { type, params: {} };
+    case 'update-embed': return { type, params: {} };
     default: return { type, params: { url: 'https://' } };
   }
 }
@@ -227,6 +236,40 @@ function ActionRow(props: {
         </Field>
       )}
 
+      {(action.type === 'remount' || action.type === 'update-embed') && (
+        <>
+          <Field label={action.type === 'remount' ? 'Reload which' : 'Update which'}>
+            <select
+              value={targets[0] ?? ''}
+              onChange={(e) => set({ targets: e.target.value ? [e.target.value] : undefined })}
+            >
+              <option value="">First embed (default)</option>
+              <option value="all">All embeds on the page</option>
+              {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </Field>
+          <Field label="Only when this variable is true">
+            <input
+              list="sb-var-keys"
+              value={String(p.when ?? '')}
+              placeholder="(always)"
+              onChange={(e) => set({ when: e.target.value || undefined })}
+            />
+          </Field>
+          <p className="hint">
+            {action.type === 'remount'
+              ? 'Rebuilds the frame, so its before-render code decides the config again.'
+              : 'Pushes the before-render result into the running frame, keeping its state. Uses UpdateEmbedParams, which is not public SDK API — Reload embed is the supported equivalent.'}
+            {' '}In an ApiIntercept handler this <strong>must</strong> be conditional: rebuilding makes the app
+            re-issue the call you are watching, and the page loops.
+          </p>
+        </>
+      )}
+
+      {action.type === 'run-code' && (
+        <RunCodeFields params={p} set={set} context={context} />
+      )}
+
       {action.type === 'open-url' && (
         <>
           <Field label="URL">
@@ -239,6 +282,140 @@ function ActionRow(props: {
             </select>
           </Field>
         </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The one action that is code. Shared by actions lists and a handler's `respond`
+ * slot: same fields, different meaning for the return value.
+ */
+/**
+ * A textarea with a coloured copy of itself behind it. The textarea stays the editor —
+ * selection, undo and IME all keep working — and only paints its caret.
+ */
+export function CodeArea({ value, onChange }: { value: string; onChange: (next: string) => void }) {
+  const hl = React.useRef<HTMLPreElement>(null);
+  const rows = Math.min(24, Math.max(6, value.split('\n').length + 1));
+  return (
+    <div className="codefn-editor">
+      <pre className="codefn-hl" ref={hl} aria-hidden="true"><code>{highlight(value)}</code></pre>
+      <textarea
+        className="codefn-body"
+        rows={rows}
+        value={value}
+        spellCheck={false}
+        onChange={(e) => onChange(e.target.value)}
+        onScroll={(e) => {
+          const el = hl.current;
+          if (!el) return;
+          el.scrollTop = e.currentTarget.scrollTop;
+          el.scrollLeft = e.currentTarget.scrollLeft;
+        }}
+      />
+    </div>
+  );
+}
+
+/** What the framework hands a block, in signature order. */
+const CODE_PARAMS: Array<[string, string]> = [
+  ['payload', 'what this hook or event handed over'],
+  ['context', 'path, project, tokenUrl, clusterUrl'],
+  ['getVariable', 'await getVariable(key) — reads the store'],
+  ['setVariable', 'await setVariable(key, value) — writes it'],
+];
+
+/**
+ * The one action that is code, presented as the function it becomes: a signature with an
+ * editable name, the parameters the framework provides, and the body.
+ */
+export function RunCodeFields({ params, set, context, responding }: {
+  params: Record<string, any>;
+  set: (patch: Record<string, unknown>) => void;
+  context: ActionContext;
+  responding?: boolean;
+}) {
+  const [name, setName] = useState(String(params.name ?? ''));
+  const [showParams, setShowParams] = useState(false);
+  const commitName = () => {
+    const next = name.trim();
+    if (next === (params.name ?? '')) return;
+    set({ name: next || undefined });
+  };
+
+  return (
+    <div className="codefn">
+      <div className="codefn-sig">
+        <span className="codefn-kw">async function</span>
+        <input
+          className="codefn-name"
+          value={name}
+          spellCheck={false}
+          placeholder={responding ? 'replyToEvent' : 'doTheThing'}
+          onChange={(e) => setName(e.target.value)}
+          onBlur={commitName}
+          onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+        />
+        <button
+          type="button"
+          className="codefn-params"
+          title="What each parameter is"
+          onClick={() => setShowParams((v) => !v)}
+        >
+          ({'{ '}{CODE_PARAMS.map(([p]) => p).join(', ')}{' }'})
+        </button>
+        <span className="codefn-kw">{'{'}</span>
+      </div>
+
+      {showParams && (
+        <dl className="codefn-help">
+          {CODE_PARAMS.map(([p, what]) => (
+            <React.Fragment key={p}>
+              <dt>{p}</dt><dd>{what}</dd>
+            </React.Fragment>
+          ))}
+        </dl>
+      )}
+
+      <CodeArea
+        value={String(params.code ?? '')}
+        onChange={(code) => set({ code })}
+      />
+
+      <div className="codefn-sig codefn-end">
+        <span className="codefn-kw">{'}'}</span>
+        <span className="codefn-ret">
+          {responding ? 'return value becomes the reply' : 'return a JSON value'}
+        </span>
+      </div>
+
+      <Field label={responding ? 'Also store the reply in' : 'Store result in'}>
+        <input
+          list="sb-var-keys"
+          value={String(params.store ?? '')}
+          placeholder="(optional)"
+          onChange={(e) => set({ store: e.target.value || undefined })}
+        />
+      </Field>
+      <Field label="Timeout (ms)">
+        <input
+          type="number"
+          min={100}
+          max={120000}
+          step={100}
+          value={params.timeout ?? ''}
+          placeholder="30000"
+          onChange={(e) => set({ timeout: e.target.value ? Number(e.target.value) : undefined })}
+        />
+      </Field>
+      {responding && (
+        <JsonField
+          label="Fallback reply"
+          value={params.fallback}
+          hint='Sent if the code throws or times out — e.g. {"data":{"execute":true}}.'
+          onCommit={(v) => set({ fallback: v })}
+        />
       )}
     </div>
   );

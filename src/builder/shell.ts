@@ -5,7 +5,9 @@
  *
  * Bumped when the bundle changes so a stale copy is never served from cache.
  */
-export const BUILDER_VERSION = '18';
+export const BUILDER_VERSION = '37';
+
+import { MARKDOWN_SRC } from '../live/shell';
 
 const SORTABLE = 'https://cdn.jsdelivr.net/npm/sortablejs@1.15.7/Sortable.min.js';
 const INTERACT = 'https://cdn.jsdelivr.net/npm/interactjs@1.10.27/dist/interact.min.js';
@@ -27,6 +29,8 @@ export function renderBuilder(projectId: string, sdkUrl: string): string {
 <!-- At the end of body on purpose: interact.js binds its pointer handling at load
      time, and loading it before <body> exists leaves it deaf to every event. -->
 <script src="${sdkUrl}"></script>
+<!-- The same renderer the published page uses, so a text block previews exactly. -->
+<script src="${MARKDOWN_SRC}"></script>
 <script src="${SORTABLE}"></script>
 <script src="${INTERACT}"></script>
 <script src="/_static/builder/builder.js?v=${BUILDER_VERSION}"></script>

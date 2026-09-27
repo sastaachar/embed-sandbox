@@ -66,7 +66,9 @@ export interface MetadataItem { id: string; name: string }
 
 /**
  * Stores the design-time credential server-side (write-only). For token auth types the
- * backend also points config.auth at the token proxy, so the page ships no secret.
+ * backend also writes config.auth: the token proxy, so the page ships no secret, unless
+ * `publishCredential` asks for it in the page. That flag has to be sent on every save —
+ * this PUT is what settles config.auth, so leaving it out turns publishing back off.
  */
 export async function saveConnection(
   host: string,
@@ -74,11 +76,12 @@ export async function saveConnection(
   secret: string,
   secretType: string,
   authType: string,
+  publishCredential: boolean,
 ): Promise<{ ok: boolean; tokenProxy?: boolean; error?: string }> {
   const res = await fetch(`${BASE}/connection`, {
     method: 'PUT',
     headers: authH({ 'content-type': 'application/json' }),
-    body: JSON.stringify({ host, username, secret, secretType, authType }),
+    body: JSON.stringify({ host, username, secret, secretType, authType, publishCredential }),
   });
   const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   if (!res.ok) return { ok: false, error: String(body.error || `connection save failed (${res.status})`) };

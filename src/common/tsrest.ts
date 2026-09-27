@@ -59,6 +59,35 @@ async function read(res: Response, what: string): Promise<unknown> {
  */
 const tokens = new Map<string, { token: string; expiresAt: number }>();
 
+/**
+ * A token nobody has seen before. The SDK rejects a repeat outright — "Duplicate token.
+ * Please issue a new token every time getAuthToken callback is called" — and it calls the
+ * callback again on every expiry and retry, so a cached answer breaks the embed rather
+ * than saving work. The cache is still worth keeping for the burst it was built for
+ * (search_metadata and friends), so it is bypassed here and not removed.
+ *
+ * The route that calls this is public, so minting stays capped: past `cap` mints a minute
+ * for one project the last token is served again, which the SDK may refuse — better than
+ * handing anyone with the link an unbounded lever on the cluster's login endpoint.
+ */
+const mintWindows = new Map<string, { start: number; count: number }>();
+
+export async function mintFreshToken(key: string, opts: MintOptions, cap = 30): Promise<string> {
+  const now = Date.now();
+  const win = mintWindows.get(key);
+  if (!win || now - win.start > 60_000) {
+    mintWindows.set(key, { start: now, count: 1 });
+  } else {
+    win.count += 1;
+    if (win.count > cap) {
+      const cached = tokens.get(key);
+      if (cached && now < cached.expiresAt) return cached.token;
+    }
+  }
+  tokens.delete(key);
+  return mintToken(key, opts);
+}
+
 export async function mintToken(key: string, opts: MintOptions): Promise<string> {
   const cached = tokens.get(key);
   if (cached && Date.now() < cached.expiresAt) return cached.token;
@@ -77,7 +106,13 @@ export async function mintToken(key: string, opts: MintOptions): Promise<string>
   try {
     res = await fetch(base(opts.host) + path, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', accept: 'application/json' },
+      // A Worker sends no User-Agent by default and some clusters' nginx answers a bare
+      // 403 to that, so one is set explicitly.
+      headers: {
+        'content-type': 'application/json',
+        accept: 'application/json',
+        'user-agent': 'embed-sandbox/1.0 (+https://embed-sandbox.justin-mathew.workers.dev)',
+      },
       body: JSON.stringify(body),
     });
   } catch (err) {

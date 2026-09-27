@@ -1,6 +1,6 @@
 import { generateCode, generateMarkup } from './codegen';
 import { buildGraph } from './graph';
-import { publicUrls } from './urls';
+import { connectLink, publicUrls } from './urls';
 import { effectiveProject, resolveTheme, tsVarsFor } from './theme';
 import {
   clearLock,
@@ -39,7 +39,7 @@ const PAGE_SCHEMA_DOC = `A page is JSON:
   "css": "optional page-scoped CSS string",
   "blocks": [
     { "type": "heading", "text": "Q3", "level": 1 },
-    { "type": "text", "text": "Paragraph copy." },
+    { "type": "text", "text": "**Markdown** copy — *emphasis*, \`code\`, [links](/sales), and\\n- bullets\\n\\nMARKDOWN ONLY: HTML is never rendered, tags come out as literal text." },
     { "type": "divider" },
     { "type": "spacer", "size": "32px" },
     { "type": "buttons", "align": "left", "items": [
@@ -77,6 +77,8 @@ embed.preRender marks the SDK's PreRendered*Embed: it renders nothing itself and
 config.preRenderId. A normal embed carrying the same preRenderId attaches to it, which is
 what makes showing it instant. Off unless set — every pre-rendered iframe is a live session.
 embed.height / embed.width size the box on the page, not the SDK.
+Any block's "style" may carry {{key}} tokens; it is re-applied whenever that variable changes,
+so a "set" in an event handler can show or hide a block (e.g. a loader until LiveboardRendered).
 embed.name is how a host-event action addresses this embed; without one it is its index.
 embed.embedEventHandlers is a list of { type, id?, actions } where type is an EmbedEvent
 name and each action is { type, params }:
@@ -86,6 +88,23 @@ name and each action is { type, params }:
   open-modal   params { name }
   close-modal  params { name? }
   host-event   params { hostEvent, data?, targets? }
+  remount      params { targets? } — rebuild the embed in place, re-running beforeRender
+  update-embed params { targets? } — same, but pushed into the running frame via
+               UpdateEmbedParams (not public SDK API; see "Actions")
+  run-code     params { name, code, store?, timeout?, fallback? } — JavaScript run in an
+               isolated sandbox with payload / variables / context in scope; \`return\` a JSON
+               value and it lands in store. \`name\` is a JS identifier: generated code
+               declares the block as \`async function <name>(payload, context)\`. See
+               "Custom code" in the manual.
+A handler may also carry respond: { type: "run-code", params: { code, fallback? } } — for
+events the embed WAITS on (ApiIntercept), the code's return value is the reply.
+embed.beforeRender: [actions] runs before the embed is constructed; payload.config is the
+resolved SDK config and an object a run-code action returns is merged into it.
+page.beforeLoad: [actions] runs before any block renders; payload is { path }.
+page.codeOverride: { react?, esm?, cdn?, note? } replaces what the \`‹/›\` view shows for
+this page, per flavour — a demo usually wants the few lines that make the point rather than
+the faithful export. Anything not overridden still comes from the generator, and the view
+says the code is hand-written (with \`note\` if you set one).
 Read a value back anywhere with getVariable("<key>"), or {{<key>}} inside text.
 targets is a list of embed names or indices, or "all"; omitted means the first embed.
 Buttons use the SAME actions list: { label, variant?, actions: [{ type, params }] }, with
@@ -139,7 +158,10 @@ or "pr:<commit>" (immutable). This site unwraps that tarball and serves
 dist/tsembed.js itself, so the published page loads it like any other version. A
 pkg.pr.new URL pasted from package.json is accepted and stored as the same pin.
 authType: None | EmbeddedSSO | Cookieless | TrustedAuthTokenCookieless.
-embedDefaults is merged underneath every page's embed config.`;
+embedDefaults is merged underneath every page's embed config.
+codeSandboxSrc: https URL of a self-hosted eval-sandbox page for run-code actions (optional).
+clusterProxy: true opens /api/projects/<id>/cluster/<path>, the authenticated relay custom
+  code uses to re-issue an intercepted call. Off by default; see "Custom code".`;
 
 /**
  * The whole contract, written for an agent with NO other context. Served on GET /mcp
@@ -168,16 +190,38 @@ required for every write; reads are public because sharing is the point.
 
 1. create_project → returns projectId, editToken (SAVE IT — shown once), and every URL.
 2. Connect a cluster — username + password are REQUIRED for search_metadata and anything
-   cluster-backed. Read get_config.connection; if connected is false, FIRST ASK THE HUMAN
-   where they want to enter the details: on the connect page (preferred — send
-   connection.connectUrl + "#t=<editToken>"; the token rides in the fragment and never
-   hits the server), or here in chat (then set_site the auth block). Verify with
-   get_config / search_metadata. IF THEY GAVE YOU CREDS HERE AND THE CLUSTER IS
-   UNREACHABLE FROM THIS SERVER (search_metadata says clusterReached: false — typically a
-   VPN-only or private host, or a self-signed HTTPS port), do not keep retrying: their
-   browser IS on that VPN, so send them the connect link and ask them to connect from the
-   page instead. The connect link also keeps the credential server-side for every auth
-   type except TrustedAuthTokenCookieless/TrustedAuthToken, where the page must ship it.
+   cluster-backed. Read get_config.connection; if connected is false, PUT ALL THE ROUTES IN
+   FRONT OF THE HUMAN and let them choose. Never leave them with "connect the sandbox" and
+   no link. That is a dead end, and it is the one failure this section exists to prevent.
+   Every tool result that hits a connection problem carries a connectionHelp block with the
+   link already built from your own edit token; relay it verbatim.
+     a. THE CONNECT LINK: /build/<id>#t=<editToken>&connect=1, ready-made in
+        connectionHelp.theLink. Opens the builder with the Connect dialog up; they type the
+        cluster address, username, password and auth type. The credential is stored
+        server-side. The fragment never reaches the server and the builder strips it from
+        the address bar.
+     b. THE DETAILS HERE IN CHAT: entirely allowed, and do not scold anyone for offering.
+        set_site { thoughtSpotHost, authType, auth: { tokenSource: "credentials", username,
+        secret, secretType } }. Say plainly what it costs: this route writes the secret into
+        the publicly readable page config, so use a low-privilege user or take route (a).
+     c. IDS ONLY: they press Sync in the builder's "Build with AI" dialog and their browser
+        fills the catalog. search_metadata then answers with source: "catalog".
+   Verify with get_config / search_metadata.
+
+   IF THE CLUSTER IS UNREACHABLE FROM THIS SERVER (clusterReached: false) say so plainly:
+   it is almost always VPN-only or otherwise private, NOT a bad password, and retrying will
+   not fix it. Two consequences, both of which you must tell the human about:
+     - METADATA. You cannot read ids from here at all. They connect once in the builder and
+       press "Sync from cluster" in the "Build with AI" dialog; their browser is on the VPN,
+       so it fetches the liveboards, answers and worksheets and caches them here for you.
+       search_metadata then answers with source: "catalog". Until that happens, ask them for
+       the ids rather than guessing.
+     - DO NOT USE THE TOKEN PROXY. auth.tokenSource "proxy" mints from THIS SERVER, which is
+       exactly what cannot reach the cluster, so the published page will not load for
+       anyone. On a VPN-only cluster the page must mint for itself out of the viewer's
+       browser: auth { tokenSource: "credentials", username, secret, secretType }. It does
+       ship the secret in the public page, so use a low-privilege user and say so. "proxy"
+       stays the right default for any cluster this server CAN reach.
 3. lock_project → announce yourself BEFORE the first edit. The builder warns the human
    ("being vibe-coded", with an Edit anyway escape); every save refreshes the lock, and
    it expires 5 minutes after your last edit anyway.
@@ -205,8 +249,9 @@ get_config / save_config. set_site merges config; save_config and set_page repla
 | explaining the config to the human | get_code (real SDK code) or get_urls (links) |
 | checking the site hangs together | get_graph (nav + shared-value edges, dangling links) |
 | the human wants their own copy | fork_site |
-| cluster not connected yet | ask the human WHERE: connect page (preferred — send the link) or creds in chat |
-| creds given in chat but clusterReached: false | VPN/private host — stop retrying, send the connect link; their browser can reach it |
+| cluster not connected yet | offer BOTH: the ready link in connectionHelp.theLink, or the details in chat via set_site. Never say "connect it" with no link |
+| creds given in chat but clusterReached: false | VPN/private host. Stop retrying. Send connectionHelp.theLink, have them Sync from cluster for ids, and switch auth off "proxy" to "credentials" |
+| cluster answered 401 | wrong username/secret. Say so and send connectionHelp.theLink so they can re-enter them |
 
 ## The document
 
@@ -218,10 +263,18 @@ showCode (default true: a \u2039/\u203A toggle on the published site shows each 
 code with a fork-and-edit link), themeEmbed (default true: pushes the theme into embeds as --ts-var-*), live
 (default true: published pages poll /version and re-render on change).
 
+page.codeOverride replaces the \`‹/›\` code view per flavour — see the page schema above.
+
 config.variables: { liveboardId: { label, default, placeholder } } — variables a
 VISITOR may set from the site's own settings panel (the gear, beside the ‹/› code
-button). {{name}} reads one anywhere, including inside an embed's config, so a
-liveboard id can be a variable with a default instead of a hard-coded guid.
+button). {{name}} reads one anywhere, including inside an embed's config and inside a
+HostEvent payload, so a liveboard id or a filter value can be a variable with a
+default instead of a hard-coded guid or literal.
+ONE STORE, and config.variables is its STARTING CONTENT, not a second place a value
+comes from: the declared defaults are written into the store at boot and every reader
+reads the store afterwards — {{tokens}}, value blocks, and getVariable alike. The code
+a page exports says the same thing out loud: a declared default is a setVariable() call
+at the top, and every {{token}} in a config or payload is a getVariable("key") read.
 Resolution order, everywhere: what this page load set > what the visitor saved in
 their own browser > the declared default > unset. Set with setVariable(key, value)
 for this load, or setVariable(key, value, { persist: true }) to keep it in their
@@ -229,16 +282,45 @@ browser; reset(key) drops theirs. The panel also lets a visitor supply the
 thoughtSpotHost/auth the project lacks — kept in their browser, never sent here —
 and a page that cannot init() yet says "Settings needed" instead of failing
 silently. showSettings:false hides the gear, showCode:false the ‹/›.
+NAMED CONFIGS: the panel keeps several sets of host/auth/variables — one per cluster, say —
+and switches between them. Each is stored under its own localStorage keys in the visitor's
+browser (the unnamed \"Default\" keeps the original keys), so a demo can be loaded against
+cluster A, then reloaded against cluster B without retyping anything. They show as tabs
+beside the panel title: click one to switch, \`+\` to name a new one, \`\u00d7\` on the active
+tab to delete it. \`?config=<name>\` opens the page on one, then strips itself from the
+address bar so switching and deleting still stick. Adding a config seeds it from whatever is
+on screen, so it means \"branch from here\". Nothing about a config reaches the server.
+The panel also carries an SDK version field: a visitor can point the page at another
+published SDK (or a \`pr:<n>\` build) in their own browser without touching config.sdkVersion,
+and the label shows what a range like \`latest\` resolves to today.
+
 The settings panel also has a DEV MODE toggle (per visitor): it opens a log of every
 host event this page fires, the reply that came back, and every embed event received —
-each row naming which embed it belongs to — with an Only/Hide name filter and
-per-direction toggles. Nothing is logged when it is off.
+each row naming which embed it belongs to. Nothing is logged when it is off. The console
+gets its own \u203a_ button at the bottom LEFT, opposite \u2699 and \u2039/\u203a, which opens and closes it;
+closing keeps the log, only the dev-mode switch throws it away. Only host and embed are
+ticked by default; reply, wire and code are the same traffic seen closer up. The boxes gate
+RECORDING, not display \u2014 an unticked direction costs nothing and does not eat the 400-event
+budget, but ticking it back on starts from that moment. Its ? explains
+all five directions, the badges, and the count, which reads shown/received out of the last
+400 events. In the filter box, comma-separated, WHERE THE * IS says what a term means:
+Update (anywhere), Update* (starts with), *Filters (ends with), *Filter* (contains, the
+same as plain text), Up*Filters (starts with Up and ends with Filters), /^Update/ (regex),
+and a leading ! or - drops those rows \u2014 so \"Update*, Navigate*, !Subscribed\" reads as
+it sounds. There is no Only/Hide mode. One event is one row: the wire copy of an EmbedEvent
+folds into it (marked \u21c4) and a repeat counts up as \u00d7N. A row that just arrived goes dark
+and fades back, so a burst is readable. The log keeps going as you move around the site; a
+reload starts it fresh, and so does Clear.
+Related: a link to a page of this project routes in place now however it is written \u2014 a
+Markdown \"[x](/two)\" is the same project-relative path as nav's \"to\", and used to be a
+full load of a bare /two that is a page of nothing.
 
 theme tokens: colorPrimary, colorPrimaryText, colorBg, colorSurface, colorText,
 colorMuted, colorBorder, fontFamily, fontHeading, radius, maxWidth, headerHeight,
 space. css (site) and page.css are raw CSS; useful classes: .sb-header, .sb-nav,
-.sb-footer, .sb-heading, .sb-text, .sb-embed, .sb-value, .sb-btn[data-variant],
-.sb-divider, .sb-row, .sb-col, .sb-note.
+.sb-footer, .sb-heading, .sb-text (a text block; also carries .sb-md, so .sb-md p /
+.sb-md ul / .sb-md code reach its Markdown), .sb-embed, .sb-value,
+.sb-btn[data-variant], .sb-divider, .sb-row, .sb-col, .sb-note.
 
 header/footer: { show, title, subtitle, logoUrl, sticky, align: left|center|split,
 nav: [{ label, to|url }], links: [...], text }.
@@ -247,7 +329,9 @@ page: { title, css, modals, blocks: [...] }.
 
 ## Blocks
 
-heading { text, level 1|2|3 } · text { text } · divider · spacer { size }
+heading { text, level 1|2|3 } — literal text, no formatting
+text { text } — MARKDOWN, and Markdown only. See the next section.
+divider · spacer { size }
 value { key, label, placeholder } — shows a variable, updates live;
       placeholder shows until the key is first set (default "—") — use it for
       loading states ("Loading the Liveboard…")
@@ -255,6 +339,45 @@ buttons { align, items: [{ label, variant primary|secondary|ghost, actions: [...
 row { gap, align, columns: [{ span, blocks }] } — rows cannot nest inside columns
 embed — see below. Any block takes style (inline CSS escape hatch).
 {{key}} interpolates the value store into any text, dotted paths allowed.
+
+## Markdown in text blocks — MARKDOWN ONLY, NEVER HTML
+
+The text block is the only block that formats, and it renders Markdown. This is the
+whole grammar; nothing outside it does anything:
+
+  **bold** · __bold__ · *italic* · _italic_ · ~~strike~~ · \`code\`
+  [label](url) · ![alt](url) · \\* to escape a character
+  # h1 … ###### h6
+  - * +  bullets, nested by indenting two spaces
+  1.  1)  numbered lists
+  >  blockquote
+  \`\`\`lang  fenced code block  \`\`\`
+  ---  horizontal rule
+  a single newline is a line break; a blank line starts a new paragraph
+
+HTML IS NOT SUPPORTED. Not a subset of it, not "safe tags", not with an escape hatch.
+There is no sanitiser to get past because there is nothing to get past: the renderer
+builds DOM nodes for the Markdown it recognises and turns every other character into
+text. Send "<b>hi</b>" and the page shows the eight characters <b>hi</b>. The same is
+true of <script>, <iframe>, <img onerror=…>, <br>, HTML entities (&amp; stays &amp;)
+and every other markup form. Do NOT try to smuggle layout in through a text block —
+use blocks for structure, the block's \`style\` for one-offs, and page/site \`css\` for
+anything wider.
+
+Also not supported, so do not emit it: tables, task lists, footnotes, autolinks
+(<https://x>), reference-style links, setext (===) headings, heading ids, and any
+inline HTML.
+
+Links: only http:, https:, mailto:, tel: and relative or #anchor targets become links.
+javascript:, data: and anything else render as the literal text that was written.
+{{key}} is interpolated BEFORE the Markdown is parsed, so a variable's value can carry
+formatting of its own — and still cannot carry markup.
+
+Every other place text appears — heading, value label/placeholder, button labels,
+header/footer text, page titles — is LITERAL text. Markdown there shows its asterisks.
+
+CSS: the rendered wrapper is .sb-text.sb-md, so .sb-md p, .sb-md ul, .sb-md code and
+friends are reachable from page or site css.
 
 ## Embeds
 
@@ -293,6 +416,31 @@ filter-state bugs are reproduced).
     targets: embed names/indices, "all", or omitted = first embed on the page
     store: value-store key that receives the RESPONSE — GetFilters, GetParameters and
     GetTML answer, and this is the only way to surface it on the page.
+    payload: {{tokens}} are resolved out of the value store first, at any depth, so a
+    filter can be driven by a variable the visitor sets:
+      { "type": "UpdateRuntimeFilters", "payload": [{ "columnName": "{{filterColumn}}",
+        "operator": "EQ", "values": ["{{filterValue}}"] }] }
+    A token with NO value refuses the whole fire (console + dev log) rather than send
+    an empty string, so declare a default in config.variables for anything a payload
+    reads. Button labels and a set action's \`literal\` are NOT interpolated.
+  run-code    { name, code, store?, timeout?, fallback? } — see "Custom code" below.
+  remount     { targets?, when? } — destroy an embed and build it again in place, WITHOUT
+              reloading the page. Its beforeRender hook runs afresh, so anything that hook
+              decides (disabledActions and the like) is re-decided. Same targets as a host
+              event. This is the SUPPORTED way to re-apply an embed config.
+  update-embed { targets?, when? } — the same re-decision, pushed into the RUNNING frame instead of
+              rebuilding it, so scroll and state survive. Re-runs beforeRender, assigns the
+              result onto the instance's viewConfig, and fires UpdateEmbedParams.
+              NOT PUBLIC SDK API — \`viewConfig\`, \`getUpdateEmbedParamsObject()\` and the
+              UpdateEmbedParams host event are all internal, and it falls back to a rebuild
+              on an SDK that does not expose them. Verified on SDK 1.51.2; use \`remount\`
+              where a rebuild is acceptable.
+
+  \`when\` on either names a variable that must be TRUTHY for it to fire, and inside an
+  ApiIntercept handler it is **required in practice**: rebuilding or re-configuring an embed
+  makes the app re-issue the very calls the handler is watching, so an unconditional
+  re-apply reloads the page forever. Have the respond code set a flag only when its answer
+  actually changes, and point \`when\` at that.
 
 UpdateFilters payload — verified against a live cluster; the embed's own error message
 describes { column, oper } and then REJECTS it, so use exactly:
@@ -318,6 +466,99 @@ or map Error to a status literal — AuthExpire-shaped payloads arrive on the Er
 channel every ~5 minutes on a healthy embed and will flip your status spuriously; the
 runtime already modals genuinely fatal errors.
 
+## Custom code — run-code, hooks, responders
+
+When the declarative vocabulary is not enough, a run-code action runs JavaScript. It
+executes in eval-sandbox: a cross-origin iframe that cannot touch the page, its globals
+or its cookies, so a published page stays safe to share.
+
+Your code is the body of a function whose signature names everything it is given:
+
+  async function <name>({ payload, context, getVariable, setVariable }) {
+    // your code
+  }
+
+What each one is:
+  payload    what this hook or event hands over — the only thing that varies per run.
+             See the four hook points below for its shape in each.
+  context    where the code is running and what it may call. The same four keys every
+             time, and the generated code declares them as \`codeContext\`:
+               path                     the page path, e.g. "/limit"
+               project.thoughtSpotHost  the cluster this site embeds
+               project.sdkVersion       the pinned SDK version
+               tokenUrl                 GET it for a token for the embed user (the same
+                                        proxy the published page itself uses)
+               clusterUrl               authenticated relay to the cluster: POST
+                                        \`context.clusterUrl + "/prism/?op=X"\` and the
+                                        Worker forwards it with a token. Requires the site
+                                        to set \`clusterProxy: true\`.
+  getVariable(key)        reads the live store — the ONLY way to read a variable
+  setVariable(key, value) writes it
+                          BOTH ARE ASYNC — \`await getVariable("x")\`. The sandbox is a
+                          cross-origin iframe, so each call is a postMessage round trip to
+                          the page, which owns the store; a write takes effect immediately
+                          and a read sees writes made by earlier runs. Use them instead of
+                          params.store when a block writes several keys or writes
+                          conditionally. Generated code declares both as async over a Map
+                          for you to swap for your own state.
+                        The relay exists because the sandbox iframe is cross-origin to the cluster, and a
+             cluster with no CORS hosts cannot be called from a browser at all. It is public
+             like the token proxy — anyone with the link can send requests as the connection
+             user — so use a low-privilege one and turn it off when the demo is done.
+\`await\` works (the code runs inside an async function); \`return\` a JSON value.
+
+Give every block a \`name\` — a JS identifier. Generated code declares the function under it
+and calls it where the hook fires, so the export reads like code someone wrote. Without one a
+name is derived from the position, which is worse. Libraries
+via \`await import("https://esm.sh/<pkg>")\`. \`fetch\` is allowed; there are no cookies, so
+send a bearer token yourself if you call the cluster. Default timeout 30000 ms
+(params.timeout, 100–120000). A run that throws or times out logs to the console and
+the dev log and never breaks the page.
+
+Two timing rules, both learned the hard way:
+  - An embed's \`interceptTimeout\` must be LONGER than the run-code \`timeout\` of the
+    \`respond\` that answers it. The code replies through the responder, so equal values
+    mean the app gives up at the same instant the code does and the reply is wasted.
+  - Runs are SERIALISED — the sandbox executes one at a time — so a burst of intercepts
+    queues, and every run in the queue is counting against its own timeout. Leave slack.
+
+Where it can hook in — four places, one action:
+  1. page.beforeLoad: [ { type: "run-code", params: { code, store } } ]
+     Runs before any block of the page renders. payload = { path }.
+     Return an object and read it back as {{store.field}} anywhere on the page.
+  2. embed.beforeRender: [ { type: "run-code", params: { code } } ]
+     Runs before THAT embed is constructed. payload = { config, type, name, path } where
+     config is the resolved SDK config. An object the code returns is deep-merged into
+     the config — the way to decide disabledActions, filters or an id from data fetched
+     first. (Pre-flight a REST call, then disable an action with a reason.)
+  3. In any actions list — a button, or an embedEventHandler's actions:
+     { type: "run-code", params: { code, store } }. In a handler payload is the event
+     payload; on a button it is { variables }. Actions run in order and a run-code is
+     awaited before the next action starts.
+  4. embedEventHandlers[].respond: { type: "run-code", params: { code, fallback } }
+     A handler with a respond ANSWERS FIRST, then runs its \`actions\` — the embed is
+     blocked until it hears back, and an action with a side effect (a remount) would
+     otherwise tear down the frame the reply is owed to.
+     For events the embed WAITS on — ApiIntercept, OnBeforeGetVizDataIntercept — the
+     return value is passed to the SDK responder as the reply. \`fallback\` is sent
+     instead if the code throws or times out, so the app is never left hanging.
+     ApiIntercept example — filter a list response to Liveboards only:
+       { "type": "ApiIntercept", "respond": { "type": "run-code", "params": {
+         "fallback": { "data": { "execute": true } },
+         "code": "const op = new URL(payload.input, context.project.thoughtSpotHost).searchParams.get('op');\n
+                  if (op !== 'GetMetadataWithStats') return { data: { execute: true } };\n
+                  const r = await fetch(new URL(payload.input, context.project.thoughtSpotHost), { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + variables.token }, body: JSON.stringify(payload.init.body) });\n
+                  const body = await r.json();\n
+                  body.data.getMetadataWithStats.objects = body.data.getMetadataWithStats.objects.filter(o => o.type === 'PINBOARD_ANSWER_BOOK');\n
+                  return { data: { execute: false, response: { status: r.status, body } } };" } } }
+     The embed needs interceptUrls in its config for ApiIntercept to fire at all.
+
+Generated code (get_code) carries every block as a real async function at the place it
+runs — awaited before render for hooks, inside the on(...) callback for handlers, as the
+responder argument for respond — so the export is the same program without the sandbox.
+config.codeSandboxSrc (site) points the sandbox iframe at your own hosted copy of
+eval-sandbox's sandbox page; the default is the package's public one.
+
 ## Auth — what a PUBLISHED page can use
 
 The page is public; the backend stores app config only and never talks to a cluster.
@@ -325,8 +566,9 @@ The page is public; the backend stores app config only and never talks to a clus
   EmbeddedSSO / SAMLRedirect / OIDCRedirect — the visitor authenticates.
   TrustedAuthToken(Cookieless) + auth: { tokenSource: "proxy" } — RECOMMENDED. The page
     calls this site's own /api/projects/<id>/token, which mints server-side from the
-    write-only connection (saved on the connect page) — NO credential in the page. Set
-    automatically when the human saves the connect page with a token auth type. Needs a
+    write-only connection (saved from the Connect dialog) — NO credential in the page. Set
+    automatically when the human saves that dialog with a token auth type, unless they
+    tick "let the published site log in with these credentials". Needs a
     cluster the server can reach (public host or plain-HTTP port; not self-signed
     HTTPS — fall back to "credentials" there). Anyone with the link can call the proxy,
     so use a low-privilege user, auth.objectId scoping, short validity.
@@ -527,7 +769,7 @@ const TOOLS = [
   {
     name: 'get_urls',
     description:
-      'Where this project can be opened: the public site, the builder, the JSON editor, its fork link and its API root. Use it to hand a human a link.',
+      'Where this project can be opened: the public site, the builder, its fork link and its API root. Use it to hand a human a link.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   },
   {
@@ -649,7 +891,7 @@ function connectionStatus(
     username: connection?.username || auth?.username || null,
     credentialStoredServerSide: hasServerSecret,
     credentialShippedInPage: hasPublicSecret,
-    connectUrl: `${origin}/connect/${projectId}`,
+    connectUrl: publicUrls(origin, projectId).connectUrl,
   };
 }
 
@@ -659,28 +901,63 @@ function connectionStatus(
  * credential ALSO ships in the public page (the page mints its own token); for every other
  * auth type it stays server-side only.
  */
-function connectionHelp(origin: string, projectId: string) {
-  const link = `${origin}/connect/${projectId}#t=<editToken>`;
+function connectionHelp(origin: string, projectId: string, editToken?: string | null) {
+  // Built with the token the caller already authenticated with, so it is ready to paste
+  // rather than a placeholder the agent has to fill in. ChatGPT could not fill it in and
+  // ended up telling the human to "connect the sandbox" with no link at all.
+  const link = editToken
+    ? connectLink(origin, projectId, editToken)
+    : connectLink(origin, projectId, '<editToken>').replace('%3CeditToken%3E', '<editToken>');
+  const ready = !!editToken;
   return {
-    firstAskTheHuman:
-      'Ask WHERE they want to enter the cluster details: on the connect page (preferred), ' +
-      'or here in chat. Do not assume.',
-    onThePage:
-      `Send the human this link (append the edit token as a URL fragment, which never ` +
-      `leaves their browser): ${link}. They fill in the cluster address, username, ` +
-      'password and auth type. Then call get_config and check connection.connected.',
-    hereInChat:
-      'If they give you the details here, save them with set_site: { thoughtSpotHost, ' +
-      'authType: "TrustedAuthTokenCookieless", auth: { tokenSource: "credentials", ' +
-      'username, secret, secretType: "password" } }, then verify with search_metadata. ' +
-      '(This path ships the secret in the public page; the connect link can keep it ' +
-      'server-side for non-cookieless auth types.)',
+    sendBothOptions:
+      'Give the human BOTH routes and let them pick. Do not decide for them, and do not ' +
+      'tell them off for offering the password here: (1) open the connect link below and ' +
+      'fill the dialog in themselves, or (2) give you the cluster address, username and ' +
+      'password in chat and you store them with set_site. Either way, say what each one ' +
+      'does with the credential (see note) and let them choose.',
+    theLink: ready
+      ? link
+      : link + ' (substitute the real edit token for <editToken> before sending)',
+    optionOnThePage:
+      `Send them this link: ${link}` + (ready ? '' : ' (with the real edit token in the #t= ' +
+      'fragment)') + '. It opens the builder with the Connect dialog already up; they fill ' +
+      'in the cluster address, username, password and auth type, and the credential is ' +
+      'stored server-side. The token rides in the fragment, which never leaves their ' +
+      'browser, and the builder strips it from the address bar. Then call get_config and ' +
+      'check connection.connected.',
+    optionHereInChat:
+      'Perfectly fine if they would rather paste the details to you. Save them with ' +
+      'set_site: { thoughtSpotHost, authType: "TrustedAuthTokenCookieless", auth: ' +
+      '{ tokenSource: "credentials", username, secret, secretType: "password" } }, then ' +
+      'verify with search_metadata. Tell them what this one costs: THIS ROUTE WRITES THE ' +
+      'SECRET INTO THE PUBLICLY READABLE PAGE CONFIG, so anyone with the site link can read ' +
+      'it. Use a low-privilege cluster user, or take the connect link instead, which keeps ' +
+      'the credential server-side.',
+    optionSyncFromTheirBrowser:
+      'Only ids needed, not a live connection? They can press Sync in the builder\'s ' +
+      '"Build with AI" dialog and their browser fills the catalog; search_metadata then ' +
+      'answers from it with source: "catalog". Works when this server cannot reach the ' +
+      'cluster at all.',
     ifTheClusterIsUnreachable:
-      'Creds given here but search_metadata says clusterReached: false? That is usually a ' +
-      'VPN-only or private host, or a self-signed HTTPS port — this server cannot reach ' +
-      'it, but the HUMAN\'S BROWSER can. Do not keep retrying: send them the connect link ' +
-      `(${link}) and ask them to connect from the page; if pickers still need ids, have ` +
-      'them press Sync in the builder\'s "Build with AI" dialog.',
+      'clusterReached: false means THIS SERVER cannot route to the cluster. Nearly always ' +
+      'a VPN-only or otherwise private host, or a self-signed HTTPS port. It is not a bad ' +
+      'password, and retrying will not fix it. The human\'s browser IS on that VPN, so ' +
+      'everything has to happen from their side: ' +
+      `send them ${link} to connect, then have them press "Sync from cluster" in the ` +
+      'builder\'s "Build with AI" dialog. That one sync pulls the liveboard, answer and ' +
+      'worksheet ids through their browser and caches them here, and search_metadata ' +
+      'answers from the cache afterwards with source: "catalog". Until they do it, you ' +
+      'have no ids and must ask them for the ones they want.',
+    doNotUseTheProxyOnAVpnCluster:
+      'IMPORTANT for an unreachable cluster: do NOT leave auth.tokenSource as "proxy". The ' +
+      'proxy mints the embed token from THIS SERVER, which is the very thing that cannot ' +
+      'reach the cluster, so the published page will fail to load for everyone. On a ' +
+      'VPN-only cluster the page has to mint for itself from the viewer\'s browser, which ' +
+      'is on the VPN: set auth { tokenSource: "credentials", username, secret, secretType }. ' +
+      'That does ship the secret in the public page, so use a low-privilege user and say so ' +
+      'out loud. Keep "proxy" for any cluster this server CAN reach, where it is the safer ' +
+      'default because the secret never leaves the server.',
     note: 'Username + password are required for search_metadata and any cluster-backed ' +
       'feature. For auth types other than TrustedAuthTokenCookieless/TrustedAuthToken the ' +
       'connect link keeps them server-side (not shipped to visitors). For token auth ' +
@@ -695,6 +972,7 @@ async function callTool(
   name: string,
   args: Record<string, unknown>,
   origin: string,
+  editToken: string | null,
 ): Promise<unknown> {
   switch (name) {
     case 'get_site': {
@@ -898,17 +1176,19 @@ async function callTool(
             clusterReached: answered,
             count: cached.length,
             items: cached,
+            // The link goes out whether or not the catalog saved us: a 401 from the
+            // cluster is exactly when the human needs somewhere to go.
+            connectionHelp: connectionHelp(origin, projectId, editToken),
             ...(cached.length ? {} : {
               note: answered
                 ? 'The cluster answered but refused the credentials in auth.credentials — ' +
                   'check the username and secret. Nothing is cached to fall back on.'
                 : 'The cluster could not be reached from the server — usually a VPN-only or ' +
                   'private host, or a self-signed HTTPS port. The human\'s browser CAN reach ' +
-                  'it: do not keep retrying here; send them the connect link (see ' +
-                  'connectionHelp) so they connect from the page, or have them press Sync in ' +
+                  "it: do not keep retrying here; send them the connect link (see " +
+                  "connectionHelp) so they connect from the dialog, or have them press Sync in " +
                   'the builder\'s "Build with AI" dialog. A plain HTTP port, if the cluster ' +
                   'has one, also works from this server.',
-              connectionHelp: connectionHelp(origin, projectId),
             }),
           };
         }
@@ -920,11 +1200,11 @@ async function callTool(
         syncedAt: cfg.catalog?.syncedAt ?? null,
         count: cached.length,
         items: cached,
+        connectionHelp: connectionHelp(origin, projectId, editToken),
         ...(cached.length ? {} : {
-          note: 'No cluster is connected yet, so there is nothing to search. Ask the human ' +
-            'to connect one — see connectionHelp for the two ways — then call get_config ' +
-            'and check connection.connected before retrying. Until then, ask them for the ids.',
-          connectionHelp: connectionHelp(origin, projectId),
+          note: 'No cluster is connected yet, so there is nothing to search. Offer the human ' +
+            'BOTH routes in connectionHelp — the connect link, or the details here in chat — ' +
+            'then call get_config and check connection.connected before retrying.',
         }),
       };
     }
@@ -1073,6 +1353,9 @@ export async function handleMcp(
       }
 
       let pid = projectId;
+      // The token this call already authenticated with, so connect links come back ready
+      // to send instead of carrying a <editToken> placeholder.
+      let callToken: string | null = projectId ? headerToken : null;
       if (!pid) {
         pid = String(args.projectId ?? '');
         if (!PROJECT_ID_RE.test(pid)) {
@@ -1084,9 +1367,10 @@ export async function handleMcp(
           responses.push(toolError(id, `invalid or missing token for project ${pid}`));
           continue;
         }
+        callToken = tok;
       }
       try {
-        responses.push(textResult(id, await callTool(env, pid, name, args, origin)));
+        responses.push(textResult(id, await callTool(env, pid, name, args, origin, callToken)));
       } catch (err) {
         const msg = err instanceof ValidationError ? err.message : 'internal error';
         if (!(err instanceof ValidationError)) console.error('[mcp]', err);

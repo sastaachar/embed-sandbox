@@ -1,7 +1,7 @@
 /**
  * Verifies the site map: pages become nodes, nav actions and shared value-store keys
  * become edges, and a link to a page that does not exist is reported rather than drawn.
- *   BASE=http://127.0.0.1:8899 node scripts/graph-check.mjs
+ *   BASE=http://127.0.0.1:8899 node e2e/graph-check.mjs
  */
 const BASE = process.env.BASE || 'http://127.0.0.1:8899';
 const pass = [], fail = [];

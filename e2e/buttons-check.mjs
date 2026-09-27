@@ -1,6 +1,6 @@
 /**
  * Verifies button -> HostEvent wiring and multiple embed blocks per page.
- *   BASE=http://127.0.0.1:8899 node scripts/buttons-check.mjs
+ *   BASE=http://127.0.0.1:8899 node e2e/buttons-check.mjs
  * Hermetic: aims the SDK at the local worker, so no live cluster is needed.
  */
 import { createRequire } from 'node:module';

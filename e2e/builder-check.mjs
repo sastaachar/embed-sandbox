@@ -1,7 +1,7 @@
 /**
  * Verifies the visual builder: palette, selection, type-driven properties,
  * drag-and-drop into rows/columns, saving, and the metadata picker's fallback.
- *   BASE=http://127.0.0.1:8899 node scripts/builder-check.mjs
+ *   BASE=http://127.0.0.1:8899 node e2e/builder-check.mjs
  */
 import { createRequire } from 'node:module';
 const require = createRequire(

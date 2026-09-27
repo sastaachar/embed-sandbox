@@ -1,7 +1,7 @@
 /**
  * Verifies the whole-app document API: GET /config returns the entire project as
  * one JSON object, PUT /config writes it back. Hermetic — no cluster needed.
- *   BASE=http://127.0.0.1:8899 node scripts/config-check.mjs
+ *   BASE=http://127.0.0.1:8899 node e2e/config-check.mjs
  */
 const BASE = process.env.BASE || 'http://127.0.0.1:8899';
 const pass = [], fail = [];
@@ -95,10 +95,10 @@ ok((await fetch(`${BASE}/api/projects/${PID}/metadata`)).status === 404,
 ok((await fetch(`${BASE}/api/projects/${PID}/token`, { method: 'POST', body: '{}' })).status === 405,
   '/token accepts only GET');
 const noConn = await fetch(`${BASE}/api/projects/${PID}/token`);
-ok(noConn.status === 409 && (await noConn.json()).error.includes('/connect/'),
-  'proxy without a stored connection explains the connect page');
+ok(noConn.status === 409 && /\/build\/.*#connect=1/.test((await noConn.json()).error),
+  'proxy without a stored connection points at the builder Connect dialog');
 
-// /connection is back for the standalone connect page: GET/PUT only, token-gated,
+// /connection backs the builder's Connect dialog: GET/PUT only, token-gated,
 // secret write-only. It stores a design-time credential server-side; it never mints.
 ok((await fetch(`${BASE}/api/projects/${PID}/connection`, {
   method: 'POST', headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' }, body: '{}',

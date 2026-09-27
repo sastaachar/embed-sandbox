@@ -78,7 +78,12 @@ export interface EventRule {
 }
 
 export interface EmbedAction {
-  type: 'set' | 'open-modal' | 'close-modal' | 'HostEvent' | 'nav' | 'open-url';
+  /**
+   * `run-code` runs JavaScript in an isolated sandbox (eval-sandbox) with `payload`,
+   * `variables` and `context` in scope; its return value lands in params.store when set.
+   */
+  type: 'set' | 'open-modal' | 'close-modal' | 'HostEvent' | 'nav' | 'open-url' | 'run-code'
+    | 'remount' | 'update-embed';
   params: Record<string, unknown>;
 }
 
@@ -88,6 +93,11 @@ export interface EmbedEventHandler {
   /** For CustomAction, the action id to match. Omit to match every occurrence. */
   id?: string;
   actions: EmbedAction[];
+  /**
+   * For events the embed waits on (ApiIntercept, OnBeforeGetVizDataIntercept…): a
+   * run-code action whose return value is passed to the SDK responder as the reply.
+   */
+  respond?: EmbedAction;
 }
 
 export interface EmbedSpec {
@@ -102,6 +112,11 @@ export interface EmbedSpec {
   /** Passed to the SDK constructor verbatim — this is the whole embed config. */
   config: Record<string, unknown>;
   embedEventHandlers?: EmbedEventHandler[];
+  /**
+   * Runs before this embed is constructed, with the resolved config as payload.config.
+   * A run-code action that returns an object has it deep-merged into the config.
+   */
+  beforeRender?: EmbedAction[];
 }
 
 /** Inline CSS escape hatch for the rare layout that tokens cannot express. */
@@ -211,6 +226,30 @@ export interface ProjectConfig {
   themeEmbed?: boolean;
   /** Set false to stop a published page polling for document changes. Default: on. */
   live?: boolean;
+  /**
+   * Where run-code actions execute: the eval-sandbox page, on an origin that is not
+   * this site's. Defaults to the package's hosted sandbox.
+   */
+  codeSandboxSrc?: string;
+  /**
+   * Opens /api/projects/:id/cluster/<path>: an authenticated relay custom code can use
+   * to re-issue a cluster call. Public by necessity — anyone with the link can send
+   * requests as the connection user, so use a low-privilege one and turn this off after.
+   */
+  clusterProxy?: boolean;
+}
+
+/**
+ * Replaces what the ‹/› code view shows for this page. A demo often wants the six lines
+ * that make the point, not the faithful export — set the flavours you care about and the
+ * rest still come from the generator.
+ */
+export interface CodeOverride {
+  cdn?: string;
+  esm?: string;
+  react?: string;
+  /** Shown under the code instead of the usual blurb, e.g. "trimmed for the demo". */
+  note?: string;
 }
 
 export interface PageConfig {
@@ -220,6 +259,10 @@ export interface PageConfig {
   blocks?: Block[];
   css?: string;
   modals?: Record<string, Modal>;
+  /** Runs before the page's blocks render; payload is { path, variables }. */
+  beforeLoad?: EmbedAction[];
+  /** Hand-written code for the ‹/› view, per flavour. */
+  codeOverride?: CodeOverride;
 }
 
 const EMBED_TYPES = new Set([
@@ -267,6 +310,13 @@ const BUTTON_ACTIONS = new Set([
 ]);
 
 const IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
+/**
+ * An EmbedEvent name, or the composed "<host event> Subscribed" the SDK emits once the
+ * app has subscribed a listener for that host event (SDK 1.48+ / 26.4). That name is the
+ * only way to trigger a host event at load time without racing the subscription, so the
+ * one space in it is allowed where a bare identifier otherwise is not.
+ */
+const EVENT_NAME = /^[A-Za-z_$][A-Za-z0-9_$]*( Subscribed)?$/;
 /** Keys you WRITE to are always top-level. */
 const VALUE_KEY = /^[A-Za-z_$][A-Za-z0-9_$-]*$/;
 /** Keys you READ may reach into a captured payload: route.data.currentPath */
@@ -467,7 +517,23 @@ function cssLength(v: unknown, field: string): string {
 }
 
 /** One vocabulary for both button clicks and embed events. */
-const ACTION_TYPES = new Set(['set', 'open-modal', 'close-modal', 'HostEvent', 'nav', 'open-url']);
+const ACTION_TYPES = new Set([
+  'set', 'open-modal', 'close-modal', 'HostEvent', 'nav', 'open-url', 'run-code', 'remount',
+  'update-embed',
+]);
+/** Enough for a real handler, small enough that a document stays a document. */
+const MAX_CODE_LENGTH = 20000;
+/** A function name that would not compile, or would shadow what the wrapper provides. */
+const RESERVED_WORDS = new Set([
+  'await', 'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger', 'default',
+  'delete', 'do', 'else', 'enum', 'export', 'extends', 'false', 'finally', 'for', 'function',
+  'if', 'import', 'in', 'instanceof', 'new', 'null', 'return', 'super', 'switch', 'this',
+  'throw', 'true', 'try', 'typeof', 'var', 'void', 'while', 'with', 'yield',
+  'payload', 'context', 'variables',
+]);
+const MIN_CODE_TIMEOUT_MS = 100;
+const MAX_CODE_TIMEOUT_MS = 120000;
+const MAX_HOOK_ACTIONS = 10;
 const ACTION_ALIASES: Record<string, string> = { 'host-event': 'HostEvent' };
 
 /** A path into the event payload. A leading "payload" segment is optional. */
@@ -517,6 +583,43 @@ function validateAction(v: unknown, field: string, inEvent: boolean): EmbedActio
     out.url = httpUrl(params.url, `${field}.params.url`);
     const target = optStr(params.target, `${field}.params.target`, 20);
     if (target !== undefined) out.target = target;
+  } else if (type === 'remount' || type === 'update-embed') {
+    // Rebuilds the embed, re-running its beforeRender hook. Same target vocabulary as a
+    // host event: names, indices, "all", or omitted for the first embed on the page.
+    if (params.targets !== undefined) out.targets = validateTargets(params.targets, `${field}.params.targets`);
+    /*
+     * `when` names a variable that has to be truthy for this to fire. Rebuilding an embed
+     * makes the app re-issue the very calls a handler is watching, so an unconditional
+     * re-apply in an ApiIntercept handler is an infinite loop. This is the guard.
+     */
+    if (params.when !== undefined) out.when = valuePath(params.when, `${field}.params.when`);
+  } else if (type === 'run-code') {
+    const code = str(params.code, `${field}.params.code`, MAX_CODE_LENGTH);
+    if (!code.trim()) fail(`${field}.params.code must not be empty`);
+    out.code = code;
+    // The name the generated code declares this block as. Optional only so documents
+    // written before it existed still load; new ones should always carry one.
+    if (params.name !== undefined) {
+      const name = str(params.name, `${field}.params.name`, 60);
+      if (!IDENTIFIER.test(name)) fail(`${field}.params.name must be a JavaScript identifier`);
+      if (RESERVED_WORDS.has(name)) fail(`${field}.params.name must not be a reserved word`);
+      out.name = name;
+    }
+    // Where the return value lands; without it the run is fire-and-forget (or a reply).
+    if (params.store !== undefined) out.store = valueKey(params.store, `${field}.params.store`);
+    if (params.timeout !== undefined) {
+      const t = params.timeout;
+      if (typeof t !== 'number' || !Number.isInteger(t) || t < MIN_CODE_TIMEOUT_MS || t > MAX_CODE_TIMEOUT_MS) {
+        fail(`${field}.params.timeout must be an integer between ${MIN_CODE_TIMEOUT_MS} and ${MAX_CODE_TIMEOUT_MS} (ms)`);
+      }
+      out.timeout = t;
+    }
+    // What a `respond` replies with when the code throws or times out, so an
+    // intercepted request is never left hanging.
+    if (params.fallback !== undefined) {
+      if (typeof params.fallback === 'function') fail(`${field}.params.fallback must be JSON`);
+      out.fallback = params.fallback;
+    }
   } else {
     // Accept the older spelling so documents written this morning still load.
     const name = str(params.type ?? params.hostEvent, `${field}.params.type`, 60);
@@ -550,7 +653,9 @@ function validateHandlers(v: unknown, field: string): EmbedEventHandler[] {
   return v.map((raw, i) => {
     const o = plainObject(raw, `${field}[${i}]`);
     const name = str(o.type, `${field}[${i}].type`, 60);
-    if (!IDENTIFIER.test(name)) fail(`${field}[${i}].type must be an EmbedEvent name`);
+    if (!EVENT_NAME.test(name)) {
+      fail(`${field}[${i}].type must be an EmbedEvent name, or "<HostEvent> Subscribed"`);
+    }
     const actionsRaw = o.actions === undefined ? [] : (Array.isArray(o.actions) ? o.actions : [o.actions]);
     if (actionsRaw.length > 20) fail(`${field}[${i}].actions supports at most 20 actions`);
     const handler: EmbedEventHandler = {
@@ -558,8 +663,20 @@ function validateHandlers(v: unknown, field: string): EmbedEventHandler[] {
       actions: actionsRaw.map((a, j) => validateAction(a, `${field}[${i}].actions[${j}]`, true)),
     };
     if (o.id !== undefined) handler.id = str(o.id, `${field}[${i}].id`, 200);
+    if (o.respond !== undefined) {
+      const respond = validateAction(o.respond, `${field}[${i}].respond`, true);
+      if (respond.type !== 'run-code') fail(`${field}[${i}].respond must be a run-code action`);
+      handler.respond = respond;
+    }
     return handler;
   });
+}
+
+/** beforeLoad / beforeRender: a short list of actions that run with a payload. */
+function validateHookActions(v: unknown, field: string): EmbedAction[] {
+  const list = Array.isArray(v) ? v : [v];
+  if (list.length > MAX_HOOK_ACTIONS) fail(`${field} supports at most ${MAX_HOOK_ACTIONS} actions`);
+  return list.map((a, i) => validateAction(a, `${field}[${i}]`, true));
 }
 
 /**
@@ -570,6 +687,7 @@ function validateHandlers(v: unknown, field: string): EmbedEventHandler[] {
  */
 const EMBED_OWN_KEYS = new Set([
   'type', 'name', 'preRender', 'height', 'width', 'config', 'embedEventHandlers', 'capture', 'on',
+  'beforeRender',
 ]);
 
 function legacyHandlers(raw: Record<string, unknown>, field: string): EmbedEventHandler[] {
@@ -710,6 +828,11 @@ function validateEmbed(v: unknown, field: string): EmbedSpec {
     ? validateHandlers(raw.embedEventHandlers, `${field}.embedEventHandlers`)
     : legacyHandlers(raw, field);
   if (handlers.length) spec.embedEventHandlers = handlers;
+
+  if (raw.beforeRender !== undefined) {
+    const hooks = validateHookActions(raw.beforeRender, `${field}.beforeRender`);
+    if (hooks.length) spec.beforeRender = hooks;
+  }
 
   return spec;
 }
@@ -1083,6 +1206,12 @@ export function validateProjectConfig(v: unknown): ProjectConfig {
   if (raw.showEmbedErrors !== undefined) {
     out.showEmbedErrors = optBool(raw.showEmbedErrors, 'showEmbedErrors');
   }
+  if (raw.codeSandboxSrc !== undefined) {
+    out.codeSandboxSrc = httpUrl(raw.codeSandboxSrc, 'codeSandboxSrc');
+  }
+  if (raw.clusterProxy !== undefined) {
+    out.clusterProxy = optBool(raw.clusterProxy, 'clusterProxy');
+  }
   if (raw.themeEmbed !== undefined) out.themeEmbed = optBool(raw.themeEmbed, 'themeEmbed');
   if (raw.live !== undefined) out.live = optBool(raw.live, 'live');
   return out;
@@ -1101,6 +1230,24 @@ export function validatePageConfig(v: unknown): PageConfig {
     out.blocks = raw.blocks.map((b, i) => validateBlock(b, `blocks[${i}]`));
   }
   if (raw.modals !== undefined) out.modals = validateModals(raw.modals, 'modals');
+  if (raw.beforeLoad !== undefined) {
+    const hooks = validateHookActions(raw.beforeLoad, 'beforeLoad');
+    if (hooks.length) out.beforeLoad = hooks;
+  }
+  if (raw.codeOverride !== undefined) {
+    const o = plainObject(raw.codeOverride, 'codeOverride');
+    const over: CodeOverride = {};
+    for (const flavour of ['cdn', 'esm', 'react'] as const) {
+      if (o[flavour] === undefined) continue;
+      const text = str(o[flavour], `codeOverride.${flavour}`, MAX_CODE_LENGTH);
+      if (text.trim()) over[flavour] = text;
+    }
+    if (o.note !== undefined) {
+      const note = optStr(o.note, 'codeOverride.note', 300);
+      if (note) over.note = note;
+    }
+    if (Object.keys(over).length) out.codeOverride = over;
+  }
   return out;
 }
 

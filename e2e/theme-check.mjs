@@ -1,7 +1,7 @@
 /**
  * Verifies palette derivation from a single colour, contrast guarantees,
  * explicit-token precedence, and the --ts-var-* defaults pushed to the embed.
- *   BASE=http://127.0.0.1:8899 node scripts/theme-check.mjs
+ *   BASE=http://127.0.0.1:8899 node e2e/theme-check.mjs
  */
 const BASE = process.env.BASE || 'http://127.0.0.1:8899';
 const pass = [], fail = [];

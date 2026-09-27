@@ -139,6 +139,8 @@ export function ConnectDialog(props: {
   const [sdkVersion, setSdkVersion] = useState(props.defaultSdkVersion || '');
   const [msg, setMsg] = useState<{ text: string; kind: string }>({ text: '', kind: 'dlg-note' });
   const [busy, setBusy] = useState(false);
+  // Publishing a credential only means something for the auth types that mint a token.
+  const tokenAuth = authType === 'TrustedAuthToken' || authType === 'TrustedAuthTokenCookieless';
 
   const go = async () => {
     if (!host || !username || (!secret && !conn)) {
@@ -158,7 +160,7 @@ export function ConnectDialog(props: {
       setMsg({ text: `Could not log in: ${clusterHint(err)}`, kind: 'dlg-note' });
     }
     try {
-      const publishing = publish && username && (secret || clusterSecret());
+      const publishing = publish && tokenAuth && username && (secret || clusterSecret());
       const effectiveSecret = secret || clusterSecret();
       await props.onSave(host, hostChanged, loggedIn, authType, publishing
         ? { username, secret: effectiveSecret, secretType }
@@ -240,17 +242,19 @@ export function ConnectDialog(props: {
         <input
           id="publishCred"
           type="checkbox"
-          checked={publish}
+          checked={publish && tokenAuth}
+          disabled={!tokenAuth}
           onChange={(e) => setPublish(e.target.checked)}
         />
         Let the published site log in with these credentials
       </label>
-      <p className={publish ? 'dlg-err' : 'dlg-note'}>
-        {publish
-          ? `Anyone who opens /p/… can read ${username || 'this user'}’s ${
-            secretType === 'secret_key' ? 'secret key' : 'password'}. It is written into the page config. Demo only.`
-          : 'Without publishing, the secret stays server-side and the published site fetches tokens from this site\u2019s token proxy instead.'}
-      </p>
+      {(!tokenAuth || !publish) && (
+        <p className="dlg-note">
+          {!tokenAuth
+            ? `${authType} mints no token, so there is nothing for the page to log in with — pick TrustedAuthToken or TrustedAuthTokenCookieless to publish a credential.`
+            : 'Without publishing, the secret stays server-side and the published site fetches tokens from this site\u2019s token proxy instead.'}
+        </p>
+      )}
       {msg.text && <p className={msg.kind}>{msg.text}</p>}
       <div className="dlg-row">
         <button onClick={props.onClose}>Cancel</button>
@@ -324,6 +328,28 @@ const CATALOG_TYPES = ['LIVEBOARD', 'ANSWER', 'LOGICAL_TABLE'];
  * has no browser and nothing server-side can reach the cluster, so real ids can only
  * come from here.
  */
+/**
+ * A value you take, never one you type. These three are facts about the project — the
+ * server URL, its id, its token — and rendering them as plain inputs made them look
+ * editable, so people tried. Read-only styling plus the button they actually wanted.
+ */
+function CopyRow(props: { id: string; value: string; onCopy: () => void }) {
+  return (
+    <div className="row">
+      <input
+        id={props.id}
+        readOnly
+        aria-readonly="true"
+        spellCheck={false}
+        value={props.value}
+        onFocus={(e) => e.currentTarget.select()}
+        onClick={(e) => e.currentTarget.select()}
+      />
+      <button title="Copy to clipboard" onClick={props.onCopy}>Copy</button>
+    </div>
+  );
+}
+
 export function BuildWithAiDialog(props: {
   projectId: string;
   editToken: string;
@@ -381,17 +407,15 @@ export function BuildWithAiDialog(props: {
       </p>
 
       <Field label="MCP server (add once, works for every project)">
-        <input id="mcpUrl" readOnly value={mcpUrl} onFocus={(e) => e.currentTarget.select()} />
+        <CopyRow id="mcpUrl" value={mcpUrl} onCopy={() => copy('MCP server', mcpUrl)} />
       </Field>
       <Field label="Project id">
-        <input id="mcpProject" readOnly value={props.projectId} onFocus={(e) => e.currentTarget.select()} />
+        <CopyRow id="mcpProject" value={props.projectId} onCopy={() => copy('Project id', props.projectId)} />
       </Field>
       <Field label="Edit token">
-        <input id="mcpToken" readOnly value={props.editToken} onFocus={(e) => e.currentTarget.select()} />
+        <CopyRow id="mcpToken" value={props.editToken} onCopy={() => copy('Edit token', props.editToken)} />
       </Field>
       <div className="dlg-row">
-        <button onClick={() => copy('MCP server', mcpUrl)}>Copy server</button>
-        <button onClick={() => copy('Edit token', props.editToken)}>Copy token</button>
         <button className="primary" onClick={() => copy('Prompt', prompt)}>Copy prompt</button>
       </div>
 

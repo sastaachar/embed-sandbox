@@ -2,6 +2,7 @@ import {
   clearLock,
   countPages,
   createProject,
+  deleteProject,
   forkProject,
   deletePage,
   getConnectionSecret,
@@ -19,13 +20,12 @@ import {
 import { type Flavor, generateCode, generateMarkup } from './common/codegen';
 import { buildGraph } from './common/graph';
 import { publicUrls } from './common/urls';
-import { renderEditor } from './builder/editor';
 import { renderBuilder } from './builder/shell';
 import { renderForkPage } from './builder/fork';
 import { buildOutline } from './common/outline';
 import { handleMcp, manualMarkdown } from './common/mcp';
 import { TarballError, fileFromTarball } from './common/tarball';
-import { TsRestError, mintToken } from './common/tsrest';
+import { TsRestError, mintFreshToken, mintToken } from './common/tsrest';
 import {
   ValidationError,
   normalizePath,
@@ -156,7 +156,7 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
   const project = await getProject(env, projectId);
   if (!project) return json({ error: 'project not found' }, 404);
 
-  // /api/projects/:id
+  // /api/projects/:id — GET the project, PATCH its config, DELETE the whole thing
   if (segments.length === 3) {
     if (request.method === 'GET') {
       const pages = await listPages(env, projectId);
@@ -185,6 +185,17 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
       const patch = validateProjectConfig(body.config ?? body);
       const updated = await updateProjectConfig(env, projectId, patch);
       return json({ ok: true, config: updated?.config });
+    }
+    if (request.method === 'DELETE') {
+      const denied = await requireToken(request, env, projectId);
+      if (denied) return denied;
+      // Irreversible and unrecoverable — the token is the only proof of ownership and
+      // it dies with the row — so the caller has to mean it in the query string.
+      if (url.searchParams.get('confirm') !== projectId) {
+        return badRequest(`add ?confirm=${projectId} to delete this project and its pages`);
+      }
+      const gone = await deleteProject(env, projectId);
+      return json({ ok: gone.deleted, projectId, deletedPages: gone.deletedPages }, gone.deleted ? 200 : 404);
     }
     return json({ error: 'method not allowed' }, 405);
   }
@@ -264,12 +275,12 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
     const cred = await getConnectionSecret(env, projectId);
     if (!cred) {
       return json({
-        error: `no cluster connection stored — open /connect/${projectId} (edit token in the #t= fragment) and save one`,
+        error: `no cluster connection stored — open /build/${projectId}#connect=1 (edit token in the #t= fragment) and save one`,
       }, 409, cors);
     }
     const hints = project.config.auth as Record<string, any> | undefined;
     try {
-      const token = await mintToken(`proxy:${projectId}:${cred.host}:${cred.username}`, {
+      const token = await mintFreshToken(`proxy:${projectId}:${cred.host}:${cred.username}`, {
         host: cred.host,
         username: cred.username,
         secret: cred.secret,
@@ -284,6 +295,79 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
       if (!(err instanceof TsRestError)) console.error('[token]', err);
       return json({ error: msg }, 502, cors);
     }
+  }
+
+  // /api/projects/:id/cluster/<path> — an authenticated relay to the project's cluster,
+  // for custom code (run-code) that must re-issue a call it intercepted. The sandbox
+  // iframe is cross-origin to both this site and the cluster, and a cluster with no CORS
+  // hosts configured cannot be called from a browser at all — so the call is forwarded
+  // here instead, with a token minted from the write-only connection.
+  //
+  // OFF unless the project sets config.clusterProxy. Like the token proxy it is public by
+  // necessity, and it is strictly more reach than a token: anyone with the link can send
+  // requests as the connection user. Only two path prefixes are forwarded, and the same
+  // mitigations apply — a low-privilege user, short validity, and turning it off when the
+  // demo is done.
+  if (segments.length >= 5 && segments[3] === 'cluster') {
+    const cors = {
+      'access-control-allow-origin': '*',
+      'access-control-allow-headers': 'content-type',
+      'access-control-allow-methods': 'GET, POST, OPTIONS',
+    };
+    if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
+    if (!project.config.clusterProxy) {
+      return json({ error: 'cluster relay is off for this project — set config.clusterProxy: true' }, 403, cors);
+    }
+    if (request.method !== 'GET' && request.method !== 'POST') {
+      return json({ error: 'method not allowed' }, 405, cors);
+    }
+    const cred = await getConnectionSecret(env, projectId);
+    if (!cred) return json({ error: 'no cluster connection stored' }, 409, cors);
+
+    // Rebuilt from the segments rather than sliced off the raw URL, so ".." and encoded
+    // separators cannot walk outside the allow-listed prefixes.
+    // filter(Boolean) above drops a trailing empty segment, but "/prism/" and "/prism"
+    // are different URLs to the cluster — so the trailing slash is put back.
+    const targetPath = '/' + segments.slice(4).map((s) => encodeURIComponent(decodeURIComponent(s))).join('/')
+      + (url.pathname.endsWith('/') ? '/' : '');
+    const allowed = ['/prism/', '/api/rest/2.0/'];
+    if (!allowed.some((prefix) => (targetPath + '/').startsWith(prefix))) {
+      return json({ error: `only ${allowed.join(' and ')} are forwarded` }, 403, cors);
+    }
+    let token: string;
+    try {
+      token = await mintToken(`proxy:${projectId}:${cred.host}:${cred.username}`, {
+        host: cred.host, username: cred.username, secret: cred.secret, secretType: cred.secretType,
+      });
+    } catch (err) {
+      const msg = err instanceof TsRestError ? err.message : 'could not mint a token';
+      return json({ error: msg }, 502, cors);
+    }
+    const target = cred.host.replace(/\/+$/, '') + targetPath + url.search;
+    let upstream: Response;
+    try {
+      upstream = await fetch(target, {
+        method: request.method,
+        headers: {
+          authorization: `Bearer ${token}`,
+          accept: 'application/json',
+          'user-agent': 'embed-sandbox/1.0 (+https://embed-sandbox.justin-mathew.workers.dev)',
+          ...(request.method === 'POST' ? { 'content-type': 'application/json' } : {}),
+        },
+        body: request.method === 'POST' ? await request.text() : undefined,
+      });
+    } catch (err) {
+      console.error('[cluster relay]', err);
+      return json({ error: 'the cluster could not be reached' }, 502, cors);
+    }
+    return new Response(upstream.body, {
+      status: upstream.status,
+      headers: {
+        'content-type': upstream.headers.get('content-type') ?? 'application/json',
+        'cache-control': 'no-store',
+        ...cors,
+      },
+    });
   }
 
   // /api/projects/:id/lock — the advisory edit lock. An agent acquires it before
@@ -334,7 +418,11 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
     if (url.searchParams.get('part') === 'html') {
       return json({ path, flavor: flavourParam, part: 'html', code: generateMarkup(page.config, path) });
     }
-    const code = generateCode(
+    // A page may carry hand-written code for this flavour — a demo usually wants the few
+    // lines that make the point rather than the faithful export. Anything not overridden
+    // still comes from the generator.
+    const override = page.config.codeOverride?.[flavourParam as 'cdn' | 'esm' | 'react'];
+    const code = override ?? generateCode(
       effectiveProject(project.config),
       page.config,
       path,
@@ -357,7 +445,16 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
         },
       });
     }
-    return json({ path, flavor: flavourParam, code });
+    return json({
+      path,
+      flavor: flavourParam,
+      code,
+      // The note explains a hand-written snippet, so it only travels with one. Attaching
+      // it to a generated flavour would describe code the reader is not looking at.
+      ...(override
+        ? { overridden: true, ...(page.config.codeOverride?.note ? { note: page.config.codeOverride.note } : {}) }
+        : {}),
+    });
   }
 
   // /api/projects/:id/connection — design-time login to the cluster. Verifies by
@@ -392,6 +489,12 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
     const secret = typeof body.secret === 'string' ? body.secret : '';
     const secretType = body.secretType === 'secret_key' ? 'secret_key' : 'password';
     const authType = String(body.authType ?? 'TrustedAuthTokenCookieless').trim();
+    // The builder states outright whether the published page should carry the
+    // credential; the connect page never asks, and its silence keeps the safe default.
+    // Without this the proxy was forced unconditionally, so the builder's "let the
+    // published site log in with these credentials" was overwritten by the very same
+    // Connect click that set it.
+    const publishInPage = body.publishCredential === true;
     if (!/^https:\/\/.+/i.test(host) && !/^https?:\/\/localhost(:\d+)?/i.test(host)) {
       return badRequest('host must be an https URL (http is allowed only for localhost)');
     }
@@ -405,24 +508,33 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
 
     // Reflect the choice in the public config: host + authType always. A token auth
     // type points the page at the TOKEN PROXY — the secret stays server-side and the
-    // published site never downloads it.
+    // published site never downloads it — unless publishing was asked for outright.
     const nextConfig = { ...project.config, thoughtSpotHost: host, authType } as typeof project.config;
     if (SHIPS_PAGE_CREDENTIAL.has(authType)) {
-      nextConfig.auth = {
-        tokenSource: 'proxy',
-        ...(project.config.auth?.objectId ? { objectId: project.config.auth.objectId } : {}),
-      } as typeof project.config.auth;
+      const keep = project.config.auth?.objectId ? { objectId: project.config.auth.objectId } : {};
+      if (publishInPage) {
+        // Deliberate and demo-only: the page mints for itself, so it needs the secret.
+        // A blank one here means only the server holds it — read it back out rather
+        // than writing an auth block with an empty secret.
+        const pageSecret = secret || (await getConnectionSecret(env, projectId))?.secret || '';
+        nextConfig.auth = {
+          ...keep, tokenSource: 'credentials', username, secret: pageSecret, secretType,
+        } as typeof project.config.auth;
+      } else {
+        nextConfig.auth = { ...keep, tokenSource: 'proxy' } as typeof project.config.auth;
+      }
     } else if (nextConfig.auth?.tokenSource === 'credentials' || nextConfig.auth?.tokenSource === 'proxy') {
       // Switched away from a token auth type: the page needs no auth block at all.
       delete nextConfig.auth;
     }
     await setProjectConfig(env, projectId, nextConfig);
 
+    const shipsCredentialInPage = publishInPage && SHIPS_PAGE_CREDENTIAL.has(authType);
     return json({
       ok: true,
       authType,
-      shipsCredentialInPage: false,
-      tokenProxy: SHIPS_PAGE_CREDENTIAL.has(authType),
+      shipsCredentialInPage,
+      tokenProxy: SHIPS_PAGE_CREDENTIAL.has(authType) && !shipsCredentialInPage,
       connection: { host, username, secretType, hasSecret: true },
     });
   }
@@ -857,139 +969,32 @@ border-radius:var(--r);padding:15px;overflow-x:auto;font:400 12px/1.6 var(--mono
 
 // ------------------------------------------------------------------- connect
 
-function renderConnect(projectId: string, name: string): string {
-  const escName = name.replace(/[&<>"]/g, (c) =>
-    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string));
+/**
+ * Connecting a cluster is a builder dialog, not a page of its own — one form, one set of
+ * rules, one place for the bugs to hide. This route only forwards: it moves the edit
+ * token out of this URL's fragment and into the builder's, where the builder reads it,
+ * strips it from the address bar and opens the Connect dialog. The fragment never
+ * reaches the server, so the hand-off has to happen in the browser.
+ */
+function renderConnectRedirect(projectId: string): string {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow">
-<title>Connect a cluster · ${escName}</title>
-<style>
-:root{--bg:#f7f8fb;--card:#fff;--ink:#0f1320;--muted:#5c6470;--line:#e5e8ee;
---accent:#2770ef;--accent-ink:#fff;--code:#f2f4f8;--ok:#127a44;--danger:#c0392b;--warn:#8a5a00;
---warnbg:#fff6e5;--shadow:0 1px 2px rgba(16,24,64,.04),0 12px 32px rgba(16,24,64,.08);--radius:14px}
-@media (prefers-color-scheme:dark){:root{--bg:#0d0f14;--card:#161922;--ink:#e9ecf3;--muted:#98a0b0;
---line:#262b37;--accent:#5b95f5;--accent-ink:#0b1220;--code:#1d212b;--ok:#4fae7d;--danger:#e06a5f;
---warn:#e6b657;--warnbg:#2a2410;--shadow:0 1px 2px rgba(0,0,0,.4),0 18px 40px rgba(0,0,0,.5)}}
-*,*::before,*::after{box-sizing:border-box}
-body{margin:0;padding:40px 20px 64px;font:15px/1.6 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
-color:var(--ink);background:var(--bg);display:flex;justify-content:center}
-main{max-width:560px;width:100%}
-h1{font-size:1.5rem;letter-spacing:-.02em;margin:0 0 4px}
-.sub{color:var(--muted);margin:0 0 22px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
-padding:22px;box-shadow:var(--shadow)}
-label{display:block;font-size:.82rem;font-weight:600;color:var(--muted);margin:14px 0 6px}
-input,select{width:100%;font:inherit;padding:10px 12px;border:1px solid var(--line);border-radius:9px;
-background:var(--bg);color:var(--ink)}
-input:focus,select:focus{outline:2px solid color-mix(in srgb,var(--accent) 45%,transparent);
-outline-offset:1px;border-color:var(--accent)}
-.req{margin:18px 0 0;padding:11px 13px;border-radius:9px;background:var(--code);
-border:1px solid var(--line);font-size:.86rem;color:var(--muted)}
-.ship{margin-top:12px;padding:11px 13px;border-radius:9px;font-size:.86rem;border:1px solid var(--line)}
-.ship[data-ship="1"]{background:var(--warnbg);border-color:color-mix(in srgb,var(--warn) 45%,transparent);color:var(--warn)}
-.ship[data-ship="0"]{background:color-mix(in srgb,var(--ok) 10%,transparent);
-border-color:color-mix(in srgb,var(--ok) 40%,transparent);color:var(--ok)}
-button{font:inherit;font-weight:600;cursor:pointer;border-radius:10px;padding:12px 16px;width:100%;
-margin-top:20px;border:1px solid var(--accent);background:var(--accent);color:var(--accent-ink)}
-button:disabled{opacity:.55;cursor:progress}
-.msg{margin-top:14px;font-size:.9rem}.msg.err{color:var(--danger)}.msg.ok{color:var(--ok)}
-.gate{color:var(--danger);font-size:.9rem}
-code{background:var(--code);border:1px solid var(--line);border-radius:5px;padding:1px 5px;font-size:.9em}
-</style></head><body><main>
-<h1>Connect a cluster</h1>
-<p class="sub">Project <code>${projectId}</code> — ${escName}</p>
-<section class="card" id="card">
-  <div id="gate" class="gate" hidden>This link is missing its access token. Ask the agent for the
-    full link (it ends with <code>#t=…</code>), or open the project from the builder.</div>
-  <div id="form" hidden>
-    <label for="host">ThoughtSpot cluster address</label>
-    <input id="host" placeholder="https://your.thoughtspot.cloud" autocomplete="off">
-    <label for="user">Username</label>
-    <input id="user" placeholder="embed_user" autocomplete="off">
-    <label for="pass">Password</label>
-    <input id="pass" type="password" placeholder="••••••••" autocomplete="off">
-    <label for="auth">Auth type</label>
-    <select id="auth">
-      <option value="TrustedAuthTokenCookieless">TrustedAuthTokenCookieless</option>
-      <option value="TrustedAuthToken">TrustedAuthToken</option>
-      <option value="None">None</option>
-      <option value="EmbeddedSSO">EmbeddedSSO</option>
-      <option value="SAMLRedirect">SAMLRedirect</option>
-      <option value="OIDCRedirect">OIDCRedirect</option>
-    </select>
-    <p class="req">Username and password are required for all MCP features to work — an AI agent
-      needs them to read real object ids from your cluster.</p>
-    <p class="ship" id="ship" data-ship="1"></p>
-    <button id="save">Save connection</button>
-    <p class="msg" id="msg" hidden></p>
-  </div>
-</section>
+<title>Connect a cluster</title>
+</head><body>
+<noscript>Open <a href="/build/${projectId}">/build/${projectId}</a> and press Connect.</noscript>
 <script>
-(function(){
-  var PID = "${projectId}";
-  var $ = function(id){ return document.getElementById(id); };
-  var m = (location.hash || '').match(/[#&]t=([^&]+)/);
-  var token = m ? decodeURIComponent(m[1]) : '';
-  if (!token) { $('gate').hidden = false; return; }
-  $('form').hidden = false;
-
-  // Auth types where the PAGE mints its own token, so the credential must ship publicly.
-  var SHIPS = { TrustedAuthTokenCookieless: 1, TrustedAuthToken: 1 };
-  var authTouched = false;
-  function paintShip(){
-    var ships = !!SHIPS[$('auth').value];
-    var el = $('ship');
-    el.setAttribute('data-ship', ships ? '1' : '0');
-    el.textContent = ships
-      ? 'Heads up: with this auth type the page mints its own token, so these credentials are stored IN your public page config — anyone with the site link can read them. Demo use only.'
-      : 'With this auth type your credentials stay server-side — used only by the builder and the agent to read your cluster. They are NOT shipped to visitors of your published site.';
-  }
-  $('auth').addEventListener('change', function(){ authTouched = true; paintShip(); });
-
-  // Prefill from what is already stored.
-  fetch('/api/projects/' + PID + '/connection', { headers: { authorization: 'Bearer ' + token } })
-    .then(function(r){ return r.ok ? r.json() : null; })
-    .then(function(d){
-      if (d) {
-        // Don't clobber anything the human already typed while this fetch was in flight.
-        if (d.host && !$('host').value) $('host').value = d.host;
-        if (d.username && !$('user').value) $('user').value = d.username;
-        if (d.authType && !authTouched) $('auth').value = d.authType;
-        if (d.hasSecret) $('pass').placeholder = '•••••• (unchanged — leave blank to keep)';
-      }
-      paintShip();
-    }, function(){ paintShip(); });
-
-  $('save').addEventListener('click', function(){
-    var msg = $('msg'); msg.hidden = true; msg.className = 'msg';
-    var btn = $('save'); btn.disabled = true; btn.textContent = 'Saving…';
-    fetch('/api/projects/' + PID + '/connection', {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json', authorization: 'Bearer ' + token },
-      body: JSON.stringify({
-        host: $('host').value.trim(),
-        username: $('user').value.trim(),
-        secret: $('pass').value,
-        secretType: 'password',
-        authType: $('auth').value
-      })
-    }).then(function(r){ return r.json().then(function(j){ return { ok: r.ok, j: j }; }); })
-      .then(function(res){
-        btn.disabled = false; btn.textContent = 'Save connection';
-        if (!res.ok) { msg.className = 'msg err'; msg.textContent = (res.j && res.j.error) || 'Could not save.'; msg.hidden = false; return; }
-        msg.className = 'msg ok';
-        msg.textContent = res.j.tokenProxy
-          ? 'Saved. Your credentials stay server-side — the published site fetches tokens from this site\u2019s token proxy.'
-          : 'Saved. The agent can now read your cluster. Your credentials stay server-side and are not shipped to visitors.';
-        msg.hidden = false;
-        $('pass').value = ''; $('pass').placeholder = '•••••• (unchanged — leave blank to keep)';
-      }, function(){ btn.disabled = false; btn.textContent = 'Save connection';
-        msg.className = 'msg err'; msg.textContent = 'Network error.'; msg.hidden = false; });
-  });
+(function () {
+  var token = '';
+  try {
+    token = new URLSearchParams(location.hash.replace(/^#/, '')).get('t') || '';
+  } catch (e) { /* an unreadable fragment just means there is no token to carry over */ }
+  // replace(), not assign(): Back should leave the builder, not bounce through here.
+  location.replace('/build/${projectId}#'
+    + (token ? 't=' + encodeURIComponent(token) + '&' : '') + 'connect=1');
 })();
 </script>
-</main></body></html>`;
+</body></html>`;
 }
 
 // -------------------------------------------------------------------- routing
@@ -1091,7 +1096,7 @@ export default {
         return html(render(projectId, sdkUrl(project.config.sdkVersion)), 200, 'no-store');
       }
 
-      if (segments[0] === 'edit') {
+      if (segments[0] === 'connect') {
         const projectId = segments[1] || '';
         if (!PROJECT_ID_RE.test(projectId)) {
           return html(renderNotFound('That project id is not valid.'), 404);
@@ -1099,17 +1104,7 @@ export default {
         if (!(await getProject(env, projectId))) {
           return html(renderNotFound(`No project with id "${projectId}".`), 404);
         }
-        return html(renderEditor(projectId), 200, 'no-store');
-      }
-
-      if (segments[0] === 'connect') {
-        const projectId = segments[1] || '';
-        if (!PROJECT_ID_RE.test(projectId)) {
-          return html(renderNotFound('That project id is not valid.'), 404);
-        }
-        const project = await getProject(env, projectId);
-        if (!project) return html(renderNotFound(`No project with id "${projectId}".`), 404);
-        return html(renderConnect(projectId, project.config.name || projectId), 200, 'no-store');
+        return html(renderConnectRedirect(projectId), 200, 'no-store');
       }
 
       if (segments[0] === 'p') {

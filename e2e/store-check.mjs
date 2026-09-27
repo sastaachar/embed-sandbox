@@ -1,7 +1,7 @@
 /**
  * Verifies the named value store: Ether.set/get/on, {{key}} bindings,
  * value blocks, set-value buttons, and EmbedEvent capture.
- *   BASE=http://127.0.0.1:8899 node scripts/store-check.mjs
+ *   BASE=http://127.0.0.1:8899 node e2e/store-check.mjs
  */
 import { createRequire } from 'node:module';
 const require = createRequire(
@@ -58,6 +58,7 @@ pg.on('console', m => { if (m.type() === 'warning') warns.push(m.text()); });
 
 await pg.goto(`${BASE}/p/${PID}/`, { waitUntil: 'domcontentloaded' });
 await pg.waitForSelector('.sb-value-out', { state: 'attached', timeout: 8000 });
+// A text block is a <div> since Markdown landed — a <p> cannot legally hold a list.
 
 // --- exposed under the project's own namespace ---
 ok(await pg.evaluate(() => typeof window.Ether === 'object'), 'store exposed as window.Ether');
@@ -67,12 +68,12 @@ for (const fn of ['set', 'get', 'all', 'keys', 'on', 'clear', 'init', 'go']) {
 }
 
 // --- unset keys render as empty / em dash, not "undefined" ---
-ok(!(await pg.textContent('p.sb-text')).includes('undefined'), 'unset {{key}} renders empty, not "undefined"');
+ok(!(await pg.textContent('.sb-text')).includes('undefined'), 'unset {{key}} renders empty, not "undefined"');
 ok((await pg.locator('.sb-value-out').first().textContent()) === '—', 'unset value block shows —');
 
 // --- set from the console reaches every binding ---
 await pg.evaluate(() => window.Ether.set('demo', 'hello'));
-ok((await pg.textContent('p.sb-text')).includes('demo=hello'), '{{demo}} updated in text block');
+ok((await pg.textContent('.sb-text')).includes('demo=hello'), '{{demo}} updated in text block');
 ok((await pg.locator('.sb-value-out').nth(1).textContent()) === 'hello', 'value block updated');
 ok((await pg.textContent('.sb-footer')).includes('last set: hello'), 'footer {{demo}} updated');
 ok(await pg.evaluate(() => window.Ether.get('demo') === 'hello'), 'Ether.get returns the value');
@@ -87,7 +88,7 @@ ok(await pg.evaluate(() => window.Ether.get('route.data.currentPath') === '/live
 
 // --- objects render as JSON rather than [object Object] ---
 await pg.evaluate(() => window.Ether.set('demo', { a: 1 }));
-ok((await pg.textContent('p.sb-text')).includes('demo={"a":1}'), 'object value renders as JSON');
+ok((await pg.textContent('.sb-text')).includes('demo={"a":1}'), 'object value renders as JSON');
 
 // --- subscriptions ---
 const notified = await pg.evaluate(() => {

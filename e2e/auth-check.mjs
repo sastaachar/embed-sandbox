@@ -1,7 +1,7 @@
 /**
  * Verifies declarative token auth (step 1: customer's own token endpoint) and that
  * only real AuthType members are accepted.
- *   BASE=http://127.0.0.1:8899 node scripts/auth-check.mjs
+ *   BASE=http://127.0.0.1:8899 node e2e/auth-check.mjs
  */
 import { createRequire } from 'node:module';
 const require = createRequire(
@@ -186,6 +186,33 @@ const viaPage = await pg3.evaluate(() =>
   window.Ether.initConfig.getAuthToken().then((t) => t, (e) => 'ERR:' + e.message));
 ok(viaPage === 'tok-proxy-1', `the published page fetches its token from the proxy (${viaPage})`);
 ok(!(await pg3.content()).includes('server-only-secret'), 'and the page HTML carries no credential');
+
+// ---- publishing the credential survives the connection save that sets it ----
+// Regression: this PUT used to force tokenSource "proxy" unconditionally, so the
+// builder's "let the published site log in with these credentials" was overwritten by
+// the very click that turned it on — the live site kept calling /token and the checkbox
+// read back off.
+const putConn2 = await fetch(`${BASE}/api/projects/${proj3.projectId}/connection`, {
+  method: 'PUT', headers: auth3,
+  body: JSON.stringify({ host: stubHost, username: 'svc_embed', secret: '', authType: 'TrustedAuthTokenCookieless', publishCredential: true }),
+}).then((r) => r.json());
+ok(putConn2.shipsCredentialInPage === true, 'publishCredential:true is honoured, not overridden');
+ok(putConn2.tokenProxy === false, 'and the proxy is reported off when the page carries the secret');
+const cfg3b = await api(`/api/projects/${proj3.projectId}/config`);
+ok(cfg3b.config.auth?.tokenSource === 'credentials', 'config.auth switches to { tokenSource: "credentials" }');
+ok(cfg3b.config.auth?.username === 'svc_embed', 'the published username is the connection username');
+ok(cfg3b.config.auth?.secret === 'server-only-secret',
+  'a blank secret in the PUT is filled from the stored connection, not written empty');
+
+// ---- and turning it back off returns to the proxy ----
+const putConn3 = await fetch(`${BASE}/api/projects/${proj3.projectId}/connection`, {
+  method: 'PUT', headers: auth3,
+  body: JSON.stringify({ host: stubHost, username: 'svc_embed', secret: '', authType: 'TrustedAuthTokenCookieless', publishCredential: false }),
+}).then((r) => r.json());
+ok(putConn3.tokenProxy === true, 'publishCredential:false puts the proxy back');
+const cfg3c = await api(`/api/projects/${proj3.projectId}/config`);
+ok(cfg3c.config.auth?.tokenSource === 'proxy', 'config.auth is { tokenSource: "proxy" } again');
+ok(!JSON.stringify(cfg3c).includes('server-only-secret'), 'and the secret leaves the public document');
 stub.close();
 
 // ---- the outline shows the generated fetch ----

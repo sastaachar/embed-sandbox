@@ -1,7 +1,7 @@
 /**
  * Verifies generated SDK code: flavours, app-level init separation, preRender
  * ordering, HostEvent wiring, multi-embed, ts-vars, download headers.
- *   BASE=http://127.0.0.1:8899 node scripts/codegen-check.mjs
+ *   BASE=http://127.0.0.1:8899 node e2e/codegen-check.mjs
  */
 const BASE = process.env.BASE || 'http://127.0.0.1:8899';
 const pass = [], fail = [];
@@ -160,6 +160,29 @@ ok(evCdn.includes('<span id="out-status">Loading…</span>'),
   'cdn renders the value span as real HTML');
 ok(evCdn.includes('.on(EmbedEvent.Load'), 'cdn wires the handlers as well');
 
+// ---- react: a "<HostEvent> Subscribed" handler has no on<Event> prop, so it must be
+// wired on the embed's ref rather than described in a comment ----
+await put('/subscribed', { blocks: [
+  { type: 'embed', embed: { type: 'liveboard', config: { liveboardId: 'lb-s' },
+    embedEventHandlers: [
+      { type: 'edit Subscribed', actions: [{ type: 'HostEvent', params: { type: 'Edit' } }] },
+    ] } },
+]});
+const sub = await code('path=/subscribed&flavor=react');
+ok(/const embedRef = useEmbedRef\(\)/.test(sub), 'react: the embed gets a ref for it');
+ok(/ref=\{embedRef\}/.test(sub), 'and the component is given that ref');
+ok(/useEffect\(\(\) => \{[\s\S]*embed\.on\("edit Subscribed"/.test(sub),
+  'react: the handler is registered in an effect, not left as a comment');
+ok(/embed\.trigger\(HostEvent\.Edit\)/.test(sub), 'and it triggers through the local ref');
+ok(sub.includes("import { useEffect } from 'react'"), 'react: useEffect is imported for it');
+ok(/import \{[^}]*HostEvent[^}]*\} from '@thoughtspot\/visual-embed-sdk\/react'/.test(sub),
+  'react: HostEvent is imported for the trigger');
+ok(!sub.includes('has no on<EmbedEvent> prop'), 'react: no "wire it yourself" comment survives');
+ok(!sub.includes('const codeContext'), 'react: no custom-code scaffolding on a page without custom code');
+ok(!sub.includes('appVariables'), 'react: and no getVariable/setVariable stubs either');
+const subEsm = await code('path=/subscribed&flavor=esm');
+ok(subEsm.includes('embed.on("edit Subscribed"'), 'esm wires the same handler by string name');
+
 // ---- react: modals are components below the page, in the same file ----
 await put('/dlg', { blocks: [
   { type: 'buttons', items: [{ label: 'Open detail', actions: [{ type: 'open-modal', params: { name: 'detail' } }] }] },
@@ -221,6 +244,54 @@ ok(!proxyCode.includes('secret') && !proxyCode.includes('username'),
   'and no credential appears anywhere in the code');
 const ssoCode = await code('path=/lb&flavor=esm');
 ok(!ssoCode.includes('getAuthToken'), 'EmbeddedSSO init() stays clean — no token, nothing to fetch');
+
+// ---- variables: config seeds the store, every {{token}} is a read out of it ----
+// Its own project: PUT /config REPLACES the document, so seeding variables into the
+// project above would delete the pages every later check reads.
+const vproj = await api('/api/projects', {
+  method: 'POST', headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ name: 'codegen vars', thoughtSpotHost: 'https://acme.thoughtspot.cloud', sdkVersion: '1.51.0' }),
+});
+const VPID = vproj.projectId;
+await fetch(`${BASE}/api/projects/${VPID}/config`, {
+  method: 'PUT',
+  headers: { 'content-type': 'application/json', authorization: `Bearer ${vproj.editToken}` },
+  body: JSON.stringify({
+    config: {
+      thoughtSpotHost: 'https://acme.thoughtspot.cloud', sdkVersion: '1.51.0',
+      variables: {
+        board: { label: 'Board', default: 'lb-seeded' },
+        filterValue: { label: 'Value', default: 'Jackets' },
+        // No default, so nothing seeds it — the store answers undefined, not braces.
+        answerId: { label: 'Answer' },
+      },
+    },
+    pages: {
+      '/vars': { title: 'Vars', blocks: [
+        { type: 'buttons', items: [{ label: 'Filter', actions: [{ type: 'HostEvent', params: {
+          type: 'UpdateRuntimeFilters',
+          payload: [{ columnName: 'item type', operator: 'EQ', values: ['{{filterValue}}'] }],
+        } }] }] },
+        { type: 'embed', embed: { type: 'liveboard', name: 'lb', config: { liveboardId: '{{board}}' },
+          beforeRender: [{ type: 'run-code', params: { name: 'pickBoard', code: 'return { liveboardId: await getVariable("board") };' } }] } },
+      ] },
+    },
+  }),
+});
+
+for (const flavor of ['esm', 'cdn', 'react']) {
+  const src = (await api(`/api/projects/${VPID}/code?path=/vars&flavor=${flavor}`)).code;
+  ok(!src.includes('{{'), `${flavor}: no raw {{braces}} reach the export`);
+  ok(src.includes('setVariable("board", "lb-seeded")'), `${flavor}: config.variables seeds the store via setVariable`);
+  ok(!src.includes('setVariable("answerId"'), `${flavor}: a variable with no default seeds nothing`);
+  ok(src.includes('getVariable("filterValue")'), `${flavor}: a host-event payload reads the store`);
+  ok(!src.includes('codeArgs'), `${flavor}: no codeArgs wrapper — the hook takes its payload`);
+  ok(/async function pickBoard\(payload\)/.test(src), `${flavor}: a code block takes only what varies per call`);
+}
+const esmVars = (await api(`/api/projects/${VPID}/code?path=/vars&flavor=esm`)).code;
+ok(esmVars.includes('liveboardId: getVariable("board")'), 'esm: an embed config reads the store');
+const reactVars = (await api(`/api/projects/${VPID}/code?path=/vars&flavor=react`)).code;
+ok(reactVars.includes('getVariable("board")'), 'react: the config prop reads the store too');
 
 // ---- download headers ----
 const dl = await fetch(`${BASE}/api/projects/${PID}/code?path=/lb&download=1`);

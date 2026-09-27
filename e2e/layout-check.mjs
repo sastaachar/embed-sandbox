@@ -1,7 +1,7 @@
 /**
  * Verifies row/column layout: validation limits, real side-by-side rendering, and
  * that embed indices stay in document order across columns.
- *   BASE=http://127.0.0.1:8899 node scripts/layout-check.mjs
+ *   BASE=http://127.0.0.1:8899 node e2e/layout-check.mjs
  */
 import { createRequire } from 'node:module';
 const require = createRequire(

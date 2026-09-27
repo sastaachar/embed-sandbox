@@ -3,7 +3,16 @@ import type { Theme } from '../common/schema';
 import { resolveTheme } from '../common/theme';
 import { SDK_CDN_ORIGIN, sdkUrl } from '../common/sdkUrl';
 
-export const RUNTIME_VERSION = '44';
+export const RUNTIME_VERSION = '81';
+
+/**
+ * The Markdown renderer for text blocks, shared byte-for-byte with the builder canvas.
+ * Versioned with the runtime because they change together; deferred and preloaded
+ * alongside it, so it costs a parallel fetch of a few KB and no round trip of its own.
+ */
+export const MARKDOWN_SRC = `/_static/live/markdown.js?v=${RUNTIME_VERSION}`;
+/** The eval-sandbox client (vendored from the npm package by `npm run vendor:eval`). */
+export const EVAL_SANDBOX_SRC = `/_static/live/eval-sandbox.js?v=${RUNTIME_VERSION}`;
 
 const THEME_VAR: Record<keyof Theme, string> = {
   colorPrimary: '--sb-primary',
@@ -84,6 +93,25 @@ min-height:48px;flex-wrap:wrap}
 .sb-heading{margin:0;font-family:var(--sb-font-heading,inherit);color:var(--sb-text);
 line-height:1.2;letter-spacing:-.01em}
 .sb-text{margin:0;color:var(--sb-muted);max-width:70ch}
+/* Markdown inside a text block. markdown.js adds .sb-md; the builder canvas repeats
+   these rules in src/builder/ui/styles.css so the preview matches. Both live BEFORE
+   the project's own CSS, so a site can still restyle any of it. */
+.sb-md>:first-child{margin-top:0}
+.sb-md>:last-child{margin-bottom:0}
+.sb-md p{margin:0 0 .75em}
+.sb-md h1,.sb-md h2,.sb-md h3,.sb-md h4,.sb-md h5,.sb-md h6{margin:1.2em 0 .4em;
+color:var(--sb-text);font-family:var(--sb-font-heading,inherit);line-height:1.25}
+.sb-md ul,.sb-md ol{margin:0 0 .75em;padding-left:1.4em}
+.sb-md li{margin:.15em 0}
+.sb-md blockquote{margin:0 0 .75em;padding:.1em 0 .1em 12px;border-left:3px solid var(--sb-border)}
+.sb-md code{font-family:ui-monospace,Menlo,monospace;font-size:.9em;
+background:var(--sb-surface);border-radius:4px;padding:.1em .35em}
+.sb-md pre{margin:0 0 .75em;padding:10px 12px;overflow-x:auto;
+background:var(--sb-surface);border-radius:var(--sb-radius)}
+.sb-md pre code{background:none;padding:0}
+.sb-md hr{height:1px;background:var(--sb-border);border:0;margin:1em 0}
+.sb-md img{max-width:100%;height:auto;border-radius:var(--sb-radius)}
+.sb-md strong{color:var(--sb-text);font-weight:650}
 .sb-divider{height:1px;background:var(--sb-border);border:0;margin:0}
 .sb-btns{display:flex;gap:8px;flex-wrap:wrap;width:fit-content;max-width:100%}
 .sb-btns[data-align="center"]{width:100%;justify-content:center}
@@ -119,6 +147,32 @@ border:1px solid var(--sb-border);background:var(--sb-surface);color:var(--sb-te
 .sb-code-fork{font-size:13px;padding:4px 11px;border-radius:7px;border:1px solid var(--sb-primary);
 color:var(--sb-primary);text-decoration:none}
 .sb-code-fork:hover{background:var(--sb-primary);color:var(--sb-primary-text);text-decoration:none}
+/* "Edit this" only shows to someone holding the edit token, and for them it is the
+   likelier action of the two, so it is the filled one and Fork & edit stays outlined. */
+.sb-code-edit{background:var(--sb-primary);color:var(--sb-primary-text)}
+.sb-code-edit:hover{opacity:.88}
+/* Folder tabs: the strip hangs to the bottom edge of the head, so the active tab paints
+   over the head's border-bottom and reads as one surface with the body below it. The head
+   bottom-aligns for the same reason — a centred title floats above the tab labels. */
+.sb-set-overlay .sb-code-head{align-items:flex-end}
+.sb-set-overlay .sb-code-head>strong,.sb-set-overlay .sb-code-head>button{margin-bottom:-5px}
+.sb-set-tabs{display:flex;align-items:flex-end;gap:3px;flex-wrap:wrap;min-width:0;
+align-self:flex-end;margin:0 0 -10px}
+.sb-set-tabs button{margin-bottom:1px;padding:5px 13px 6px;font-size:12px;
+border-radius:8px 8px 0 0;border:1px solid var(--sb-border);border-bottom:0;
+background:rgba(0,0,0,.05);background:color-mix(in srgb,var(--sb-text) 7%,var(--sb-surface));
+color:var(--sb-muted)}
+.sb-set-tabs button:hover{color:var(--sb-text)}
+.sb-set-tabs button.on{margin-bottom:0;padding:7px 15px;background:var(--sb-bg);
+color:var(--sb-text);font-weight:600}
+.sb-set-x{margin-left:7px;opacity:.55}
+.sb-set-x:hover{opacity:1}
+.sb-set-plus{padding:5px 10px}
+.sb-set-new{font:inherit;font-size:12px;margin-bottom:1px;padding:5px 10px;width:9rem;
+border:1px solid var(--sb-border);border-bottom:0;border-radius:8px 8px 0 0;
+background:var(--sb-bg);color:var(--sb-text)}
+.sb-set-fab[data-cfg]::after{content:'';position:absolute;top:6px;right:6px;width:7px;height:7px;border-radius:50%;background:var(--sb-primary)}
+.sb-code-note{margin:0;padding:8px 16px 0;font:12px/1.5 var(--sb-font);color:var(--sb-muted)}
 .sb-code-pre{flex:1;margin:0;padding:14px 16px;overflow:auto;font:12.5px/1.6 ui-monospace,Menlo,monospace;
 white-space:pre;background:#2d2d2d;color:#ccc}
 .sb-modal-backdrop{position:fixed;inset:0;z-index:100;background:rgba(0,0,0,.45);
@@ -194,8 +248,8 @@ color:var(--sb-text);width:100%}
 .sb-set-foot{display:flex;gap:8px;align-items:center;padding:10px 18px;
 border-top:1px solid var(--sb-border);flex:0 0 auto}
 .sb-set-foot .sb-set-sp{flex:1}
-.sb-dev{position:fixed;left:18px;bottom:18px;z-index:94;
-width:min(600px,calc(100vw - 36px));max-height:46vh;display:flex;flex-direction:column;
+.sb-dev{position:fixed;left:18px;bottom:70px;z-index:94;
+width:min(600px,calc(100vw - 36px));max-height:58vh;display:flex;flex-direction:column;
 background:var(--sb-surface);border:1px solid var(--sb-border);border-radius:12px;
 box-shadow:0 18px 50px rgba(15,18,45,.25);overflow:hidden;font-size:12px}
 .sb-dev-head{display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:7px 10px;
@@ -204,15 +258,31 @@ border-bottom:1px solid var(--sb-border)}
 border-radius:7px;background:var(--sb-bg);color:var(--sb-text)}
 .sb-dev-head button{font:inherit;font-size:11.5px;padding:3px 9px;border-radius:7px;
 border:1px solid var(--sb-border);background:var(--sb-surface);color:var(--sb-text);cursor:pointer}
-.sb-dev-seg{border-radius:7px}
-.sb-dev-seg button.on{background:var(--sb-primary);color:var(--sb-primary-text)}
 .sb-dev-dirs{display:flex;gap:7px;color:var(--sb-muted)}
 .sb-dev-dirs label{display:flex;gap:3px;align-items:center;cursor:pointer}
 .sb-dev-count{color:var(--sb-muted);font-variant-numeric:tabular-nums;min-width:2.5em;text-align:right}
+/* The log is full and dropping its oldest rows. Silent eviction is what made a busy page
+   look like it had cleared the log, so say so where the number already is. */
+.sb-dev-count[data-full]{color:#b06a00;font-weight:700}
 .sb-dev-list{overflow:auto;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
 .sb-dev-row{display:flex;gap:8px;align-items:baseline;padding:3px 10px;cursor:pointer;
 border-top:1px solid var(--sb-border)}
 .sb-dev-row:hover{background:var(--sb-bg)}
+/* A row that just arrived flashes amber and fades out from the first frame.
+   Amber is the one fixed colour in here that earns being fixed: nothing else in the panel
+   is warm, so it never competes with the site's palette the way an accent wash does, and
+   it is the colour every tool uses for "this just changed". At 28% alpha it lifts a light
+   surface and warms a dark one, so it needs no per-theme variant and — unlike the dark
+   slab this started as — no inverted text to stay readable. The row's own text is left
+   completely alone; the bar carries the signal once the wash has gone.
+   It fades from the FIRST frame: holding the tint first read as a colour arriving and
+   leaving, not as a fade. And there is no prefers-reduced-motion override — a colour
+   cross-fade involves no movement, and it is what that setting asks for INSTEAD of
+   movement, so switching it off only made the mark invisible. */
+@keyframes sb-dev-fresh{
+from{background:rgba(255,176,32,.28);box-shadow:inset 3px 0 0 #d98b00}
+to{background:transparent;box-shadow:inset 3px 0 0 transparent}}
+.sb-dev-row[data-fresh]{animation:sb-dev-fresh 1.8s ease-out}
 .sb-dev-t{color:var(--sb-muted)}
 .sb-dev-b{width:10px;text-align:center;font-weight:700}
 .sb-dev-row[data-dir="host"] .sb-dev-b{color:#2f6df6}
@@ -233,6 +303,29 @@ white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sb-dev-menu hr{border:0;border-top:1px solid var(--sb-border);margin:4px 0}
 .sb-dev-row[data-dir="wire"] .sb-dev-b{color:#8a5cf6}
 .sb-dev-empty{padding:10px;color:var(--sb-muted);font-family:var(--sb-font)}
+.sb-dev-fab{position:fixed;left:18px;bottom:18px;z-index:90;width:44px;height:44px;
+border-radius:50%;border:1px solid var(--sb-border);background:var(--sb-surface);
+color:var(--sb-text);font:600 15px/1 ui-monospace,Menlo,monospace;cursor:pointer;
+box-shadow:0 4px 14px rgba(15,18,45,.18)}
+.sb-dev-fab:hover{border-color:var(--sb-primary);color:var(--sb-primary)}
+/* Something arrived while the console was closed. */
+.sb-dev-fab[data-new]::after{content:'';position:absolute;top:6px;right:6px;width:8px;height:8px;
+border-radius:50%;background:var(--sb-primary)}
+.sb-dev-db{opacity:.75}
+.sb-dev-x{font-weight:700;color:var(--sb-primary);font-variant-numeric:tabular-nums}
+.sb-dev-w{color:#8a5cf6;opacity:.8}
+.sb-dev-head .sb-dev-qm{font-weight:700;width:26px;padding:3px 0}
+.sb-dev-head .sb-dev-qm.on{background:var(--sb-primary);color:var(--sb-primary-text);
+border-color:var(--sb-primary)}
+.sb-dev-help{padding:4px 11px 10px;border-bottom:1px solid var(--sb-border);background:var(--sb-bg);
+font-family:var(--sb-font);font-size:11.5px;line-height:1.5;color:var(--sb-text);
+max-height:30vh;overflow:auto;flex:0 0 auto}
+.sb-dev-help-h{margin:9px 0 4px;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;
+font-weight:700;color:var(--sb-muted)}
+.sb-dev-help-row{display:flex;gap:8px;align-items:baseline;padding:1px 0}
+.sb-dev-help-s{flex:0 0 18px;text-align:center;font-weight:700;font-family:ui-monospace,Menlo,monospace}
+.sb-dev-help-n{flex:0 0 auto;min-width:5.5em;font-weight:600;font-family:ui-monospace,Menlo,monospace}
+.sb-dev-help-d{flex:1;min-width:0;color:var(--sb-muted)}
 [hidden]{display:none}
 `;
 
@@ -276,6 +369,8 @@ export function buildManifest(project: Project, pages: Page[], basePath: string)
     // Every {{key}} the document interpolates, so the settings panel can offer a field
     // for a variable nobody declared — the page already depends on it.
     varsUsed: varsUsedIn(project.config, pages),
+    // Loaded on demand by the runtime, only when a page has a run-code action.
+    evalSandboxSrc: EVAL_SANDBOX_SRC,
   };
 }
 
@@ -303,6 +398,7 @@ export function renderShell({ project, pages, basePath, runtimeSrc }: ShellInput
 <title>${escapeHtml(title)}</title>
 ${preconnects}
 <link rel="preload" href="${escapeHtml(runtimeSrc)}" as="script">
+<link rel="preload" href="${MARKDOWN_SRC}" as="script">
 <link rel="preload" href="${escapeHtml(sdkUrl(cfg.sdkVersion))}" as="script" crossorigin>
 <style>:root{${themeVars(cfg.theme)}}${BASE_CSS}</style>
 ${userCss}
@@ -313,6 +409,9 @@ ${userCss}
 <footer class="sb-footer" id="sb-footer" hidden></footer>
 <div class="sb-attic" id="sb-attic" aria-hidden="true"></div>
 <script type="application/json" id="sb-manifest">${manifest}</script>
+<!-- Deferred scripts run in document order, so the renderer is defined before the
+     runtime paints its first text block. -->
+<script src="${MARKDOWN_SRC}" defer></script>
 <script src="${escapeHtml(runtimeSrc)}" defer></script>
 </body>
 </html>`;

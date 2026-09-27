@@ -12,6 +12,7 @@ import {
 import { JsonPanel } from './JsonPanel';
 import { PageTree } from './PageTree';
 import { MapPanel } from './MapPanel';
+import { variableDefaults } from './vars';
 import { CodePanel } from './CodePanel';
 import * as sdk from './sdk';
 import spec from './spec.json';
@@ -20,6 +21,30 @@ const PALETTE = (spec as any).palette as Array<{ label: string; chooseType?: boo
 const REMEMBER_KEY = `sb.tok.${PID}`;
 
 const NAME_KEY = `sb.name.${PID}`;
+
+/**
+ * A link can carry its own way in: `/build/<id>#t=<editToken>&connect=1` opens the
+ * builder already unlocked, with the Connect dialog up. That is how a cluster gets
+ * connected now — there is no separate connect page, so there is one form to keep right.
+ *
+ * The fragment is the carrier because a fragment is never sent to the server. It is read
+ * ONCE, here at module load, and wiped from the address bar in the same breath, so the
+ * token does not survive into history, a bookmark, or a screenshot of the tab.
+ */
+const LINK = (function readLink(): { token: string; connect: boolean } {
+  try {
+    const raw = location.hash.replace(/^#/, '');
+    if (!raw) return { token: '', connect: false };
+    const p = new URLSearchParams(raw);
+    const found = { token: (p.get('t') || '').trim(), connect: p.get('connect') === '1' };
+    if (found.token || found.connect) {
+      history.replaceState(null, '', location.pathname + location.search);
+    }
+    return found;
+  } catch {
+    return { token: '', connect: false };
+  }
+})();
 
 /**
  * The landing page lists this browser's builds from sb.tok.* + sb.name.*. Only a REAL
@@ -151,6 +176,12 @@ export function App() {
     await reload();
     setReady(true);
   }, [reload]);
+
+  // A "connect your cluster" link asked for the dialog, so put it up once the document
+  // is in — the dialog reads the host and auth type off it.
+  useEffect(() => {
+    if (ready && LINK.connect) setDialog({ kind: 'connect' });
+  }, [ready]);
 
   useEffect(() => {
     if (!ready) return;
@@ -420,6 +451,20 @@ export function App() {
         <span className="sp" />
         <a href={`/p/${PID}/`} target="_blank" rel="noopener">Site ↗</a>
         <button
+          id="copyToken"
+          title="Copy this project's edit token"
+          onClick={async () => {
+            try {
+              await navigator.clipboard.writeText(getToken());
+              setStatus('edit token copied', 'ok');
+            } catch {
+              setStatus('could not copy — Build with AI shows it as text', 'err');
+            }
+          }}
+        >
+          Copy token
+        </button>
+        <button
           id="forget"
           title="Remove this project's edit token from this browser"
           onClick={() => {
@@ -468,7 +513,11 @@ export function App() {
         </section>
 
         {view === 'code' ? (
-          <CodePanel path={path} onClose={() => switchView('build')} />
+          <CodePanel
+            path={path}
+            codeOverride={doc.current?.pages?.[path]?.codeOverride as Record<string, unknown> | undefined}
+            onClose={() => switchView('build')}
+          />
         ) : view === 'map' ? (
           <MapPanel
             onClose={() => switchView('build')}
@@ -520,6 +569,7 @@ export function App() {
               onResize={() => { /* wired once via interact.js */ }}
               lib={lib}
               mountError={null}
+              vars={variableDefaults(d)}
             />
           </div>
         )}
@@ -568,6 +618,11 @@ export function App() {
             // one setting that genuinely needs a reload. Safe now that the cluster
             // credential survives one in sessionStorage.
             const versionChanged = Boolean(host) && String(d.config.sdkVersion || '') !== sdkVersion;
+            const tokenAuth = authType === 'TrustedAuthTokenCookieless' || authType === 'TrustedAuthToken';
+            // Only a token auth type has anything to mint, so that is the only place
+            // publishing means something — and the backend agrees, which matters because
+            // it settles config.auth after this save.
+            const publishing = Boolean(publishCredential) && tokenAuth;
             if (host) {
               // The app's own config is all the backend holds. A credential normally
               // stays in this tab — unless it is deliberately published below, which
@@ -575,17 +630,14 @@ export function App() {
               d.config.thoughtSpotHost = host;
               d.config.authType = authType;
               if (sdkVersion) d.config.sdkVersion = sdkVersion; else delete d.config.sdkVersion;
-              const tokenAuth = authType === 'TrustedAuthTokenCookieless' || authType === 'TrustedAuthToken';
-              if (publishCredential) {
-                d.config.auth = {
-                  ...(d.config.auth || {}),
-                  tokenSource: 'credentials',
-                  ...publishCredential,
-                };
+              const objectId = d.config.auth?.objectId;
+              const keep = objectId ? { objectId } : {};
+              if (publishing) {
+                d.config.auth = { ...keep, tokenSource: 'credentials', ...publishCredential };
               } else if (tokenAuth && (serverCredential || d.config.auth?.tokenSource === 'proxy')) {
                 // No secret in the page: the published site calls the token proxy,
                 // which mints from the server-side connection saved below.
-                d.config.auth = { tokenSource: 'proxy' };
+                d.config.auth = { ...keep, tokenSource: 'proxy' };
               } else if (d.config.auth?.tokenSource === 'credentials' || d.config.auth?.tokenSource === 'proxy') {
                 d.config.auth = undefined;
               }
@@ -594,7 +646,7 @@ export function App() {
             if (host && serverCredential) {
               const stored = await saveConnection(
                 host, serverCredential.username, serverCredential.secret,
-                serverCredential.secretType, authType,
+                serverCredential.secretType, authType, publishing,
               ).catch((e) => ({ ok: false, error: (e as Error).message }));
               if (!stored.ok) setStatus(`connection not stored server-side: ${stored.error}`, 'err');
             }
@@ -726,6 +778,7 @@ function Gate({ onOpen }: { onOpen: (token: string, remember: boolean) => Promis
   // Decided on the FIRST render, synchronously: verifying a remembered token is async,
   // and rendering the form meanwhile is the flash of the gate you see on reload.
   const [checking, setChecking] = useState(() => {
+    if (LINK.token) return true;
     try { return Boolean(localStorage.getItem(REMEMBER_KEY)); } catch { return false; }
   });
 
@@ -735,10 +788,20 @@ function Gate({ onOpen }: { onOpen: (token: string, remember: boolean) => Promis
     tried.current = true;
     let stored: string | null = null;
     try { stored = localStorage.getItem(REMEMBER_KEY); } catch { /* private mode */ }
-    if (!stored) { setChecking(false); return; }
+    if (!LINK.token && !stored) { setChecking(false); return; }
     void (async () => {
-      if (await verifyToken(stored!)) { await onOpen(stored!, false); }
-      else { try { localStorage.removeItem(REMEMBER_KEY); localStorage.removeItem(NAME_KEY); } catch { /* ignore */ } }
+      // A token in the link wins: it is the newer intent, and it is how a project gets
+      // handed to a second browser. Remembered, because the address bar has already been
+      // wiped — not remembering it would send a refresh straight back to this gate.
+      if (LINK.token) {
+        if (await verifyToken(LINK.token)) { await onOpen(LINK.token, true); setChecking(false); return; }
+        setErr('The edit token in that link is not valid for this project.');
+      }
+      // A bad link must not cost a good remembered token, so this is checked separately.
+      if (stored) {
+        if (await verifyToken(stored)) { await onOpen(stored, false); setChecking(false); return; }
+        try { localStorage.removeItem(REMEMBER_KEY); localStorage.removeItem(NAME_KEY); } catch { /* ignore */ }
+      }
       setChecking(false);
     })();
   }, [onOpen]);

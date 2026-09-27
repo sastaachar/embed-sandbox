@@ -2,11 +2,14 @@ import React, { useEffect, useRef } from 'react';
 import type { Block, EmbedSpec, Loc } from './types';
 import { DEFAULT_EMBED_HEIGHT } from './types';
 import { indexAt, listFromKey, listKey } from './blocks';
+import { hasToken, interpolate } from './vars';
 import * as sdk from './sdk';
 import spec from './spec.json';
 
 declare const Sortable: any;
 declare const interact: any;
+/** /_static/live/markdown.js — the published page's renderer, loaded by the shell. */
+declare const SBMarkdown: { render: (node: HTMLElement, src: string) => void } | undefined;
 
 interface CanvasProps {
   blocks: Block[];
@@ -16,6 +19,8 @@ interface CanvasProps {
   onResize: (loc: Loc, height: string, width: string | null) => void;
   lib: any;
   mountError: string | null;
+  /** The project's declared variable defaults — what a first-time visitor resolves. */
+  vars: Record<string, string>;
 }
 
 const TYPE_OF = (b: Block) => (b.type === 'embed' ? `${b.embed!.type}Embed` : b.type);
@@ -128,20 +133,30 @@ function Card(props: CanvasProps & { block: Block; loc: Loc }) {
 }
 
 function Body(props: CanvasProps & { block: Block; loc: Loc }) {
-  const { block, loc } = props;
+  const { block, loc, vars } = props;
   switch (block.type) {
     case 'heading': {
       const H = `h${block.level || 2}` as 'h1' | 'h2' | 'h3';
-      return <H className="b">{block.text || '(heading)'}</H>;
+      return <H className="b">{interpolate(block.text || '', vars) || '(heading)'}</H>;
     }
     case 'text':
-      return <p className="b">{block.text || '(text)'}</p>;
+      return <Markdown text={interpolate(block.text || '', vars) || '(text)'} />;
     case 'divider':
       return <hr />;
     case 'spacer':
       return <div className="ph">spacer {block.size || '24px'}</div>;
-    case 'value':
-      return <div className="ph">{block.label ? `${block.label}: ` : ''}{`{{${block.key}}}`}</div>;
+    case 'value': {
+      // A declared default is what a visitor sees before anything sets the key; without
+      // one the block genuinely shows the runtime's placeholder, so say so.
+      const declared = vars[block.key as string];
+      const shown = declared !== undefined ? declared : (block.placeholder as string) || '—';
+      return (
+        <div className="ph">
+          {block.label ? `${block.label}: ` : ''}{shown}
+          <span className="ph-key">{`{{${block.key}}}`}</span>
+        </div>
+      );
+    }
     case 'buttons':
       return (
         <div className="btns">
@@ -181,23 +196,56 @@ function Body(props: CanvasProps & { block: Block; loc: Loc }) {
   }
 }
 
+/**
+ * A text block previews through the SAME markdown.js the published page loads, so what
+ * you see here is what a visitor gets. Imperative on purpose: the renderer builds DOM
+ * nodes (never markup), which is exactly why HTML in a text block stays literal text —
+ * writing a React version would be a second implementation to keep honest.
+ */
+function Markdown({ text }: { text: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    if (typeof SBMarkdown === 'undefined') { node.textContent = text; return; }
+    SBMarkdown.render(node, text);
+  }, [text]);
+  return <div className="b" ref={ref} />;
+}
+
 function idKeyFor(type: string): string {
   const entry = (spec as any).embedTypes.find((t: any) => t.type === type);
   return entry ? entry.idKey : 'liveboardId';
 }
 
 function EmbedBox(props: CanvasProps & { block: Block; loc: Loc; spec: EmbedSpec }) {
-  const { loc, spec: embedSpec, lib } = props;
+  const { loc, spec: embedSpec, lib, vars } = props;
   const hostRef = useRef<HTMLDivElement>(null);
   const idKey = idKeyFor(embedSpec.type);
-  const hasId = Boolean(embedSpec.config[idKey]);
+  // The id AS THE SDK WILL SEE IT. "{{liveboardId}}" is a real guid once the project's
+  // default is applied — testing the raw config called that a valid id and handed the
+  // braces to the SDK, which is why an embed driven by a variable stayed blank here
+  // while the published page rendered it fine.
+  const rawId = embedSpec.config[idKey];
+  const resolvedId = typeof rawId === 'string' ? interpolate(rawId, vars) : rawId;
+  const hasId = Boolean(resolvedId);
   const [error, setError] = React.useState<string | null>(null);
+  // Bumping this re-runs the mount effect, which is how the frame is rebuilt on demand:
+  // the canvas has no other way to make an embed load again after a cluster hiccup.
+  const [reloads, setReloads] = React.useState(0);
 
   useEffect(() => {
     if (!hasId || !lib || !hostRef.current) return;
-    setError(sdk.mount(loc, embedSpec, hostRef.current, lib));
+    setError(sdk.mount(loc, embedSpec, hostRef.current, lib, vars));
     sdk.resync();
   });
+
+  const reload = (ev: React.MouseEvent) => {
+    ev.stopPropagation();
+    sdk.release(loc);
+    setError(null);
+    setReloads((n) => n + 1);
+  };
 
   useEffect(() => () => sdk.release(loc), [loc]);
 
@@ -213,11 +261,17 @@ function EmbedBox(props: CanvasProps & { block: Block; loc: Loc; spec: EmbedSpec
         onClick={(ev) => { ev.stopPropagation(); props.onSelect(loc); }}
       >
         <span>{embedSpec.type}Embed</span>
-        <span className="eid">{(embedSpec.config[idKey] as string) || `(no ${idKey})`}</span>
+        <span className="eid" title={typeof rawId === 'string' && hasToken(rawId) ? `${idKey}: ${rawId}` : undefined}>
+          {(resolvedId as string) || `(no ${idKey})`}
+        </span>
         <span className="sp2" />
+        {hasId && (
+          <button className="embed-reload" title="Reload this frame" onClick={reload}>↻</button>
+        )}
         <span className="g" title="drag">⠿</span>
       </div>
       <div
+        key={reloads}
         className="embed-host"
         id={`bslot-${loc.replace(/\./g, '_')}`}
         data-loc={loc}
@@ -226,7 +280,13 @@ function EmbedBox(props: CanvasProps & { block: Block; loc: Loc; spec: EmbedSpec
       >
         {!hasId && (
           <div className="embed-note">
-            {embedSpec.type}: choose a {idKey} on the right to render it live.
+            {typeof rawId === 'string' && hasToken(rawId)
+              // The id IS set — to a variable nothing fills in. Saying "choose a
+              // liveboardId" here sends people to a field that already looks right.
+              ? <>{idKey} is <code>{rawId}</code>, and no default is declared for it.
+                Give that variable a default in Site → Variables, or a visitor’s
+                settings panel will have to supply it.</>
+              : <>{embedSpec.type}: choose a {idKey} on the right to render it live.</>}
           </div>
         )}
         {error && <div className="embed-note">{error}</div>}

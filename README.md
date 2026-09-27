@@ -9,7 +9,6 @@ header, embed, footer, buttons — not an editor.
 ```
 POST /api/projects            ->  projectId + editToken
 GET  /p/<projectId>/...       ->  the live site (share this)
-GET  /edit/<projectId>        ->  JSON editor, gated on the edit token
 GET  /fork/<projectId>        ->  "fork this showcase" page, no token needed
 POST /mcp/<projectId>         ->  MCP endpoint an agent edits through
 GET  /mcp/manual.md           ->  the full manual as markdown: document shape,
@@ -45,7 +44,7 @@ src/common/               shared by builder, live and the backend
   mcp.ts                  MCP server (JSON-RPC over HTTP, bearer auth) — the agent backend
 src/builder/              builds the JSON
   shell.ts                serves the builder page (loads the React bundle)
-  editor.ts fork.ts       the /edit JSON editor · the /fork landing page
+  fork.ts                 the /fork landing page (one button, into the builder)
   ui/                     the React builder app (bundled by `npm run build:ui`)
 src/live/
   shell.ts                the published-site shell HTML, theme tokens, critical CSS
@@ -87,6 +86,16 @@ Semantics worth knowing, because they are all "replace", not "merge":
 
 The narrower endpoints (`PUT …/pages`, `PATCH …/:id`, `POST …/connection`) still
 exist and still work; they are conveniences over this one.
+
+And one that ends a project:
+
+```
+DELETE /api/projects/<id>?confirm=<id>     # the project, its pages, its connection
+```
+
+Token-gated like any write, and it takes the id twice on purpose: the edit token is the
+only proof of ownership and it dies with the row, so there is nothing to recover
+afterwards and no undo to reach for. Missing or wrong `confirm` is a 400.
 
 ### Why JSON pages instead of HTML
 
@@ -203,7 +212,6 @@ non-embed blocks, the shared embed options, and site config.
 ```
 POST /api/projects        ->  projectId + editToken
 GET  /build/<projectId>   ->  visual builder   ← start here
-GET  /edit/<projectId>    ->  JSON editor + outline/code (escape hatch)
 GET  /p/<projectId>/...   ->  the finished site
 ```
 
@@ -293,12 +301,8 @@ visit is the part people actually hate. The public site stores nothing either wa
 Three ways in, all gated on the same per-project edit token:
 
 1. **An agent over MCP** — the intended path. Ask for what you want in English.
-2. **`/edit/<projectId>`** — a two-pane JSON editor for when you want to poke at
-   it by hand. Left pane lists the site config and every page; right pane is the
-   raw JSON with `⌘S`/`Ctrl+S` to save. Add and delete pages from the sidebar.
-   Client-side JSON parse errors and server-side validation errors both surface
-   inline, so a bad `embed.type` tells you the allowed values instead of failing
-   silently.
+2. **`/build/<projectId>`** — the visual builder. `‹/›` shows the JSON behind any
+   block, so hand-editing is a panel away rather than a separate page.
 3. **The document API** — `GET`/`PUT /api/projects/:id/config`, the whole app as
    one JSON object. The per-page (`PUT …/pages`) and per-config (`PATCH …/:id`)
    endpoints remain for narrower edits.
@@ -647,11 +651,87 @@ failing silently. `showSettings: false` and `showCode: false` hide either button
 
 The panel also carries a **dev mode** toggle. With it on, the page logs every host
 event it fires, the reply that came back, and every embed event received — each row
-saying which embed it belongs to — filterable by name (**Only** these / **Hide**
-these) and by direction. Host events all pass through one `triggerOn(embed, event,
-payload)` choke point, which is what makes the fire-and-reply pairing possible;
-embed events come from a single `EmbedEvent.ALL` listener per embed, whose payload
-carries the event name. Off by default, and it costs nothing when off.
+saying which embed it belongs to. It gets its own **›_ button at the bottom left**,
+opposite ⚙ and ‹/›, which opens and closes the console: closing keeps the log, and
+only the dev-mode switch throws it away. A dot on the button means something arrived
+while it was shut. Off by default, and it costs nothing when off.
+
+Only **host** and **embed** are on by default — what this page sent, and what came
+back out of the embed. `reply`, `wire` and `code` are the same traffic seen closer up,
+and leaving them on buried the two lines anyone was actually looking for.
+
+**The direction boxes gate recording, not display.** They began as a display filter, and
+that was wrong in a way that only shows up on a busy page: unticked traffic was still
+recorded, so it spent the 400-entry budget and evicted the `host` and `embed` rows you
+were watching. From the outside that looks exactly like the log clearing itself — which is
+how it was reported. The split that holds up: the boxes are coarse and sticky, so they
+decide what is captured; the text query is retyped constantly, so it only ever decides
+what is shown. The cost is that ticking a direction back on starts recording from that
+moment and cannot recover what already fired — the same caveat dev mode itself has, and
+the legend says so. A count sitting at 400 is now a signal in its own right: something
+chatty is pushing your rows out, so untick it.
+
+The head's **?** opens a legend, because nothing in the panel explains itself on
+sight: what each direction means (and which start off), what the columns and badges
+are, what the count is counting, and the whole filter grammar. The count reads
+`shown/received` — rows the filter lets through out of everything received — and the
+log keeps the last 400 events.
+
+The **filter box** is a comma-separated list, and **where the `*` is** says what a
+term means. That is the entire grammar:
+
+| term | means |
+| --- | --- |
+| `Update` | plain text — matches anywhere: the event name, the embed, or the payload |
+| `Update*` | starts with Update |
+| `*Filters` | ends with Filters |
+| `*Filter*` | contains Filter — the same as plain text |
+| `Up*Filters` | starts with Up **and** ends with Filters |
+| `!Subscribed` | a leading `!` or `-` drops those rows; `!Sub*` drops anything starting with Sub |
+| `/^Update/` | a regex, for the rare pattern that needs more; flags optional, `i` by default |
+
+So `Update*, Navigate*, !Subscribed` reads exactly as it sounds: those two, but never
+a Subscribed. There is **no Only/Hide switch** — one box, one meaning: plain terms say
+what to show, `!` terms say what to drop, and with no plain terms everything the `!`
+terms left behind stays. A half-typed regex is ignored (and the box turns red) rather
+than blanking the log. Right-click any row for **Only** / **Also show** / **Hide**
+that event — Hide writes `!Name`, the same grammar you would type, and accumulates —
+**Only this direction**, copy payload, or log it to the console. The filter is
+remembered per project.
+
+**One event is one row.** Two things used to double every line and are both fixed:
+
+- Several classes in the SDK's chain own their own `trigger()` and each delegates up
+  to the next (a `LiveboardEmbed` call lands on `V1Embed`'s, which calls `TsEmbed`'s).
+  Both have to be patched — `SpotterEmbed` inherits only the second — so a re-entrancy
+  guard means only the outermost call logs.
+- One iframe message becomes one `EmbedEvent`, so the wire row and the embed row
+  behind it were the same event twice. The pair folds into the embed row (real member
+  name, real embed label) marked ⇄; a wire row nothing claims stays on its own, which
+  is the only wire traffic worth a line.
+
+A genuine burst — the same event, same payload, again — counts up on one row as `×N`
+instead of scrolling the log away. A row that just arrived **flashes amber and fades out
+from the first frame** over 1.8s, with a darker amber bar down its left edge, so a burst
+reads as a band of rows at different stages rather than a wall of identical text. Amber is
+the one fixed colour here that earns being fixed: nothing else in the panel is warm, so it
+never competes with the site's palette the way an accent wash does, and it is what every
+tool uses for *this just changed*. At 28% alpha it lifts a light surface and warms a dark
+one — no per-theme variant, and the row's own text is left completely alone. There is no
+`prefers-reduced-motion` override either: a colour cross-fade involves no movement, and it
+is what that setting asks you to use *instead* of movement. Only rows that arrive **live**
+are marked; a redraw or a filter change rebuilds every row, and flashing the whole log
+then would mean the opposite.
+
+**The log keeps going as you move around the site**, and a reload starts it fresh — it
+lives in the page and is mirrored nowhere. Moving around used to clear it, and the cause
+was a broken link rather than the log: the click handler caught only the nav links the
+runtime generates itself (`a[data-sb-to]`), so a **Markdown** link into the same site was
+a full document load — and since authors write the project-relative `/two`, the same
+spelling `nav: [{ to }]` takes, it was a real load of a bare root path that is a page of
+nothing. Those links were already broken; the lost log is what surfaced it.
+`internalPath()` accepts both spellings, routes only paths this project actually has, and
+leaves queries, hashes, `/build`, `/fork` and everything external as real navigations.
 
 Three sources, because one alone leaves gaps:
 
@@ -666,9 +746,6 @@ Three sources, because one alone leaves gaps:
   `contentWindow`, and the only hook for that is the `contentWindow` getter, which
   would break the `event.source === iframe.contentWindow` identity the SDK routes
   incoming events by.
-
-Right-click any row for **Only this event** / **Hide this event** (hiding
-accumulates), **Only this direction**, copy payload, or log it to the console.
 
 ### The advisory edit lock
 
@@ -715,7 +792,7 @@ way to create rows, so it belongs behind the same rate-limiting rule.
   "css": "optional page-scoped CSS",
   "blocks": [
     { "type": "heading", "text": "Q3", "level": 1 },
-    { "type": "text", "text": "Paragraph copy." },
+    { "type": "text", "text": "**Markdown** copy.\n\n- a bullet\n- another" },
     { "type": "divider" },
     { "type": "spacer", "size": "32px" },
     { "type": "buttons", "align": "left", "items": [
@@ -760,6 +837,58 @@ pre-render slot. Buttons act on the **first** embed block on the page.
 
 Nesting is by path — `/sales` is the parent of `/sales/q3`. Header and footer set
 on a page override the site-level ones for that page only.
+
+### Markdown in text blocks — and only Markdown
+
+The `text` block renders **Markdown**. Every other place text appears — `heading`,
+button labels, `value` labels and placeholders, header and footer text, page
+titles — is literal text, and Markdown written there shows its own asterisks.
+
+This is the whole grammar. Nothing outside it does anything:
+
+| | |
+|---|---|
+| `**bold**` `__bold__` | bold |
+| `*italic*` `_italic_` | italic |
+| `~~struck~~` | strikethrough |
+| `` `code` `` | inline code |
+| `[label](url)` | link |
+| `![alt](url)` | image |
+| `# h1` … `###### h6` | headings |
+| `-` `*` `+` | bullets, nested by indenting two spaces |
+| `1.` `1)` | numbered lists |
+| `>` | blockquote |
+| ` ```lang ` … ` ``` ` | fenced code block |
+| `---` | horizontal rule |
+| `\*` | escapes the next character |
+
+A single newline is a line break; a blank line starts a new paragraph.
+
+**HTML is not supported.** Not a subset, not "safe tags", not behind a flag. There
+is no sanitiser to defeat because there is nothing to defeat: `markdown.js` builds
+DOM nodes for the Markdown it recognises and every other character becomes text.
+Write `<b>hi</b>` and the page shows the eight characters `<b>hi</b>` — likewise
+`<script>`, `<iframe>`, `<br>`, `<img onerror=…>` and HTML entities (`&amp;` stays
+`&amp;`). Structure comes from blocks; one-off styling from a block's `style`;
+anything wider from page or site `css`.
+
+Also **not** supported, deliberately: tables, task lists, footnotes, autolinks
+(`<https://x>`), reference-style links, setext (`===`) headings, heading ids.
+
+Links only resolve for `http:`, `https:`, `mailto:`, `tel:` and relative or
+`#anchor` targets. `javascript:`, `data:` and anything else render as the literal
+text that was typed, link syntax and all.
+
+`{{key}}` is interpolated **before** the Markdown is parsed, so a variable's value
+can carry formatting of its own — and still cannot carry markup.
+
+The rendered block is `<div class="sb-text sb-md">`, so `.sb-md p`, `.sb-md ul`,
+`.sb-md code` and friends are reachable from page or site `css`. (It was a `<p>`
+before Markdown landed; a `<p>` cannot legally contain a list or a code block.)
+
+One renderer serves both surfaces. `public/_static/live/markdown.js` is loaded by
+the published shell *and* by the builder, so the canvas preview is the same DOM the
+visitor gets rather than a second implementation drifting quietly out of step.
 
 ### Site config
 
@@ -845,7 +974,7 @@ where that's the available name.
 
 ## Performance
 
-Measured locally with `scripts/browser-check.mjs`:
+Measured locally with `e2e/browser-check.mjs`:
 
 | | |
 |---|---|
@@ -880,33 +1009,43 @@ clipped, that pairing is the first thing to test.
 
 ## Testing
 
+Every end-to-end suite lives in **`e2e/`**; `scripts/` holds the one thing that
+isn't a test (`demo.sh`, which seeds a project). Each suite is a standalone file
+run directly — there is no runner and no framework to learn.
+
 ```bash
-npm run dev                                    # terminal 1
-BASE=http://127.0.0.1:8899 ./scripts/smoke.sh  # API + MCP + validation + cache
-BASE=http://127.0.0.1:8899 ./scripts/demo.sh   # seed a demo project, prints its URLs
-node scripts/browser-check.mjs                 # real Chrome: routing, pre-render, timings
-node scripts/editor-check.mjs                  # real Chrome: the /edit UI end to end
-node scripts/buttons-check.mjs                 # real Chrome: button->HostEvent, multi-embed
-node scripts/fork-check.mjs                    # fork copy fidelity + token isolation
-node scripts/store-check.mjs                   # value store, {{bindings}}, Ether.init
-node scripts/modal-check.mjs                   # modals, custom-action rules, error surface
-node scripts/theme-check.mjs                   # palette derivation, contrast, --ts-var push
-node scripts/codegen-check.mjs                 # code flavours, init separation, downloads
-node scripts/outline-check.mjs                 # structural outline, handler sources
-node scripts/auth-check.mjs                    # token gate, hashing, constant-time compare
-node scripts/layout-check.mjs                  # rows/columns, stacking, embedIndex
-node scripts/connection-check.mjs              # cluster login + pickers, against a stub cluster
-node scripts/builder-check.mjs                 # real Chrome: the visual builder end to end
-node scripts/config-check.mjs                  # the whole-app document API
-node scripts/live-check.mjs                    # a published page updating itself
+npm run dev                                  # terminal 1
+BASE=http://127.0.0.1:8899 ./e2e/smoke.sh    # API + MCP + validation + cache
+BASE=http://127.0.0.1:8899 ./scripts/demo.sh # seed a demo project, prints its URLs
+node e2e/browser-check.mjs                   # real Chrome: routing, pre-render, timings
+node e2e/builder-check.mjs                   # real Chrome: the visual builder end to end
+node e2e/editor-check.mjs                    # real Chrome: the /edit UI end to end
+node e2e/buttons-check.mjs                   # real Chrome: button->HostEvent, multi-embed
+node e2e/markdown-check.mjs                  # text blocks: Markdown renders, HTML never does
+node e2e/variables-check.mjs                 # the canvas resolves {{key}} from declared defaults
+node e2e/fork-check.mjs                      # fork copy fidelity + token isolation
+node e2e/store-check.mjs                     # value store, {{bindings}}, Ether.init
+node e2e/modal-check.mjs                     # modals, custom-action rules, error surface
+node e2e/theme-check.mjs                     # palette derivation, contrast, --ts-var push
+node e2e/codegen-check.mjs                   # code flavours, init separation, downloads
+node e2e/outline-check.mjs                   # structural outline, handler sources
+node e2e/graph-check.mjs                     # site map: nav edges, shared values, dangling links
+node e2e/auth-check.mjs                      # token gate, hashing, constant-time compare
+node e2e/lock-check.mjs                      # the advisory edit lock and its banner
+node e2e/connect-check.mjs                   # tokenised connect link + publish-credential toggle
+node e2e/layout-check.mjs                    # rows/columns, stacking, embedIndex
+node e2e/config-check.mjs                    # the whole-app document API
+node e2e/live-check.mjs                      # a published page updating itself
+node e2e/reload-check.mjs                    # HostEvent.Reload never pins the host page
+node e2e/dev-check.mjs                       # the dev console: its button, the legend, the filter
 ```
 
-The two `.mjs` checks need `playwright` resolvable; point `PW_ROOT` at any repo
-that has it installed. Both are hermetic and self-provisioning — they create
+The Chrome-driven checks need `playwright` resolvable; point `PW_ROOT` at any repo
+that has it installed. All of them are hermetic and self-provisioning — they create
 their own projects and aim the SDK at the local worker, so they need no live
 cluster and are safe to re-run.
 
-`browser-check.mjs` covers 18 assertions (chrome render, client-side routing,
+`e2e/browser-check.mjs` covers 18 assertions (chrome render, client-side routing,
 pre-render wrapper creation, host moving content↔attic, back button, timings).
 `editor-check.mjs` covers 22 (token gate accept/reject, token never persisted,
 load/save round-trip, cache invalidation, client- and server-side validation
@@ -918,10 +1057,26 @@ on one page each getting their own iframe and pre-render slot) — it spies on
 
 ## Security notes
 
-- **No `eval`, no `new Function`, no `innerHTML`, no user `<script>` — anywhere.**
-  Pages are JSON and the renderer writes text through `textContent`, so stored
-  page content cannot inject script. Page HTML is never accepted or evaluated.
-  `grep -rE 'eval\(|new Function|innerHTML' src public` returns nothing.
+- **No `eval`, no `new Function`, no user `<script>` — anywhere.** Pages are JSON
+  and nothing that renders a page turns author text into markup. Page HTML is
+  never accepted or evaluated. `grep -rE 'eval\(|new Function' src public` returns
+  nothing.
+- **One `innerHTML` in the whole codebase**, and it never touches page content:
+  the ‹/› code overlay assigns `Prism.highlight()`'s output to the `<pre>` it just
+  filled with `textContent`. Prism escapes `<` and `&` before wrapping tokens in
+  spans, and its input is generated SDK code, not raw block text. If the CDN is
+  unreachable the plain-text version stands. `grep -rn innerHTML src public`
+  should return that one line and no other — a second hit is a regression.
+- **Markdown is rendered by construction, not by sanitising.**
+  `public/_static/live/markdown.js` creates elements with `document.createElement`
+  and text with `document.createTextNode`; it has no API that takes an HTML string,
+  so there is no code path from a text block to an element the parser did not
+  itself decide to make. `<script>` in a text block is six-plus characters of text,
+  not a tag — which is why "we support Markdown, not HTML" is a property of the
+  renderer and not a filter someone can find a hole in. Link and image URLs are
+  restricted to `http:`, `https:`, `mailto:`, `tel:` and scheme-less targets;
+  `javascript:` and `data:` fall back to literal text rather than becoming an
+  `href`. External links get `rel="noopener noreferrer"`.
 - `{{key}}` is a **dotted property lookup against the value store**, not an
   expression evaluator. Its grammar
   (`[A-Za-z_$][\w$-]*(\.[\w$-]+)*`) cannot express a function call or an

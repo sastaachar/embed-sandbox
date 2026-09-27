@@ -18,7 +18,8 @@
       { "key": "text", "label": "Text", "kind": "text" },
       { "key": "level", "label": "Level", "kind": "select", "options": [["1", "H1"], ["2", "H2"], ["3", "H3"]], "number": true }
     ],
-    "text": [{ "key": "text", "label": "Text", "kind": "textarea" }],
+    "text": [{ "key": "text", "label": "Text", "kind": "textarea", "rows": 8,
+      "note": "Markdown: **bold**, *italic*, `code`, [links](url), - lists, > quotes, ``` fences, # headings. Markdown ONLY — HTML is not rendered, tags come out as the literal characters you typed." }],
     "spacer": [{ "key": "size", "label": "Size", "kind": "text" }],
     "value": [
       { "key": "key", "label": "Store key", "kind": "text" },

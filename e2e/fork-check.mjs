@@ -1,6 +1,6 @@
 /**
  * Verifies forking: full copy, new token, source untouched, lineage recorded.
- *   BASE=http://127.0.0.1:8899 node scripts/fork-check.mjs
+ *   BASE=http://127.0.0.1:8899 node e2e/fork-check.mjs
  */
 const BASE = process.env.BASE || 'http://127.0.0.1:8899';
 const pass = [], fail = [];

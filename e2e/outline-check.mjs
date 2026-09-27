@@ -1,7 +1,7 @@
 /**
  * Verifies the structural outline: node tags, collapsed bulk, and that handler
  * sources describe what actually runs.
- *   BASE=http://127.0.0.1:8899 node scripts/outline-check.mjs
+ *   BASE=http://127.0.0.1:8899 node e2e/outline-check.mjs
  */
 const BASE = process.env.BASE || 'http://127.0.0.1:8899';
 const pass = [], fail = [];

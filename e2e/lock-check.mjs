@@ -1,7 +1,7 @@
 /**
  * Verifies the advisory edit lock: the API, the MCP tools, that the published page
  * is NOT touched by it, and the builder's veil with its Edit anyway escape hatch.
- *   BASE=http://127.0.0.1:8899 node scripts/lock-check.mjs
+ *   BASE=http://127.0.0.1:8899 node e2e/lock-check.mjs
  */
 import { createRequire } from 'node:module';
 const require = createRequire(

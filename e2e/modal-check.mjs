@@ -1,7 +1,7 @@
 /**
  * Verifies the modal component, custom-action rules, {{key}} in embed config,
  * and the built-in embed-error surface.
- *   BASE=http://127.0.0.1:8899 node scripts/modal-check.mjs
+ *   BASE=http://127.0.0.1:8899 node e2e/modal-check.mjs
  */
 import { createRequire } from 'node:module';
 const require = createRequire(

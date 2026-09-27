@@ -4,13 +4,13 @@ import { DEFAULT_EMBED_HEIGHT } from './types';
 import { listKey, setEmbedType } from './blocks';
 import { CommitInput, Field } from './Modal';
 import spec from './spec.json';
-import { ActionsEditor } from './Actions';
+import { ActionsEditor, CodeArea, RunCodeFields } from './Actions';
 import { variableKeys } from './vars';
 
 type FieldSpec = {
   key: string; label: string; kind: string; options?: [string, string][];
   number?: boolean; note?: string; hideWhen?: string; placeholder?: string;
-  default?: string; advanced?: boolean; metadataType?: string; max?: number; in?: string;
+  default?: string; advanced?: boolean; metadataType?: string; max?: number; in?: string; rows?: number;
   showWhen?: string;
 };
 
@@ -49,6 +49,21 @@ export function PropsPanel(p: PropsPanelProps) {
           <CommitInput value={p.page.title || ''} onCommit={p.onTitleChange} />
         </Field>
         <p className="hint">Select a block to edit it, or add one from the left.</p>
+
+        <CodeOverrideFields page={p.page} onChange={p.onChange} onRerender={p.onRerender} />
+
+        <h3 className="props-sub">Before this page loads…</h3>
+        <p className="hint">payload: {'{ path }'}</p>
+        <ActionsEditor
+          actions={p.page.beforeLoad}
+          context="event"
+          doc={p.doc}
+          page={p.page}
+          lib={p.lib}
+          variables={variableKeys(p.doc)}
+          onChange={(next) => { if (next.length) p.page.beforeLoad = next; else delete p.page.beforeLoad; }}
+          onRerender={() => { p.onChange(); p.onRerender(); }}
+        />
       </section>
     );
   }
@@ -71,6 +86,61 @@ export function PropsPanel(p: PropsPanelProps) {
         ? <EmbedFields {...p} spec={block.embed!} />
         : <BlockFields {...p} block={block} />}
     </section>
+  );
+}
+
+const CODE_FLAVOURS: Array<[string, string]> = [
+  ['react', 'React'],
+  ['esm', 'JavaScript'],
+  ['cdn', 'Standalone page'],
+];
+
+/**
+ * What the ‹/› view shows. A demo usually wants the few lines that make the point rather
+ * than the faithful export, so each flavour can be hand-written; anything left empty keeps
+ * coming from the generator.
+ */
+function CodeOverrideFields(props: {
+  page: Page;
+  onChange: () => void;
+  onRerender: () => void;
+}) {
+  const [flavour, setFlavour] = React.useState('react');
+  const over = (props.page.codeOverride ?? {}) as Record<string, string | undefined>;
+  const write = (patch: Record<string, string | undefined>) => {
+    const next: Record<string, string | undefined> = { ...over, ...patch };
+    for (const k of Object.keys(next)) if (!next[k]) delete next[k];
+    if (Object.keys(next).length) (props.page as any).codeOverride = next;
+    else delete (props.page as any).codeOverride;
+    props.onChange();
+    props.onRerender();
+  };
+  const current = over[flavour] ?? '';
+
+  return (
+    <>
+      <h3 className="props-sub">Code shown to visitors</h3>
+      <Field label="Flavour">
+        <select value={flavour} onChange={(e) => setFlavour(e.target.value)}>
+          {CODE_FLAVOURS.map(([v, label]) => (
+            <option key={v} value={v}>{label}{over[v] ? ' — hand-written' : ''}</option>
+          ))}
+        </select>
+      </Field>
+      <CodeArea value={current} onChange={(code) => write({ [flavour]: code })} />
+      <p className="hint">
+        {current
+          ? 'Replaces the generated code for this flavour.'
+          : 'Empty — the generated code is shown.'}
+      </p>
+      <Field label="Note under the code">
+        <CommitInput
+          value={over.note ?? ''}
+          placeholder="e.g. trimmed for the demo"
+          onCommit={(v) => write({ note: v.trim() || undefined })}
+        />
+      </Field>
+    </>
   );
 }
 
@@ -201,6 +271,19 @@ function EmbedFields(p: PropsPanelProps & { spec: EmbedSpec }) {
 
       <p className="hint">Or drag the bottom-right corner of the box on the canvas.</p>
 
+      <h3 className="props-sub">Before this embed renders…</h3>
+      <p className="hint">payload: {'{ config, type, name, path }'} — a returned object merges into the config</p>
+      <ActionsEditor
+        actions={s.beforeRender}
+        context="event"
+        doc={p.doc}
+        page={p.page}
+        lib={p.lib}
+        variables={variableKeys(p.doc)}
+        onChange={(next) => { if (next.length) s.beforeRender = next; else delete s.beforeRender; }}
+        onRerender={() => { p.onChange(); p.onRerender(); }}
+      />
+
       <EmbedHandlers {...p} spec={s} />
 
       <Field label="SDK config (JSON)">
@@ -272,6 +355,36 @@ function EmbedHandlers(p: PropsPanelProps & { spec: EmbedSpec }) {
             onChange={(next) => { h.actions = next; }}
             onRerender={commit}
           />
+          <label className="checkline">
+            <input
+              type="checkbox"
+              checked={!!h.respond}
+              onChange={(e) => {
+                if (e.target.checked) {
+                  h.respond = { type: 'run-code', params: {
+                    code: 'return { data: { execute: true } };',
+                    fallback: { data: { execute: true } },
+                  } };
+                } else {
+                  delete h.respond;
+                }
+                commit();
+              }}
+            />
+            Reply with custom code
+          </label>
+          {h.respond && (
+            <RunCodeFields
+              params={h.respond.params as Record<string, any>}
+              context="event"
+              responding
+              set={(patch) => {
+                Object.assign(h.respond!.params, patch);
+                for (const [k, v] of Object.entries(patch)) if (v === undefined) delete h.respond!.params[k];
+                p.onChange();
+              }}
+            />
+          )}
         </div>
       ))}
       <div className="dlg-row">
@@ -326,13 +439,16 @@ function GenericField(p: PropsPanelProps & { field: FieldSpec; target: Record<st
 
     case 'textarea':
       return (
-        <Field label={f.label}>
-          <textarea
-            rows={4}
-            value={String(value ?? '')}
-            onChange={(e) => { target[f.key] = e.target.value; p.onChange(); }}
-          />
-        </Field>
+        <>
+          <Field label={f.label}>
+            <textarea
+              rows={f.rows ?? 4}
+              value={String(value ?? '')}
+              onChange={(e) => { target[f.key] = e.target.value; p.onChange(); }}
+            />
+          </Field>
+          {f.note && <p className="hint">{f.note}</p>}
+        </>
       );
 
     case 'length':

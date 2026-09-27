@@ -257,6 +257,24 @@ export async function forkProject(
   };
 }
 
+/**
+ * Deletes a project and everything under it. Pages go first and explicitly: the FK
+ * cascade is there, but D1 does not promise foreign keys are enforced on every
+ * database, and an orphaned page row would be served by nothing and deletable by
+ * nobody. The connection secret and the lock are columns on the row, so they go with it.
+ */
+export async function deleteProject(
+  env: Env,
+  id: string,
+): Promise<{ deleted: boolean; deletedPages: number }> {
+  const pages = await env.DB.prepare('DELETE FROM pages WHERE project_id = ?').bind(id).run();
+  const project = await env.DB.prepare('DELETE FROM projects WHERE id = ?').bind(id).run();
+  return {
+    deleted: (project.meta.changes ?? 0) > 0,
+    deletedPages: pages.meta.changes ?? 0,
+  };
+}
+
 export async function verifyToken(env: Env, id: string, token: string): Promise<boolean> {
   const row = await env.DB.prepare('SELECT token_hash FROM projects WHERE id = ?')
     .bind(id)

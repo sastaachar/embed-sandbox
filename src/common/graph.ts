@@ -80,10 +80,18 @@ function scanBlocks(blocks: Block[] | undefined, s: Scan): void {
         for (const action of handler.actions ?? []) {
           const p = action.params as Record<string, unknown>;
           if (action.type === 'set' && typeof p.key === 'string') s.writes.add(p.key);
+          if (action.type === 'run-code' && typeof p.store === 'string') s.writes.add(p.store);
           if (action.type === 'nav' && typeof p.to === 'string') {
             s.navs.push({ to: p.to, via: `${handler.type} handler`, source: 'handler' });
           }
         }
+        const respondStore = (handler.respond?.params as Record<string, unknown> | undefined)?.store;
+        if (typeof respondStore === 'string') s.writes.add(respondStore);
+      }
+      for (const action of block.embed?.beforeRender ?? []) {
+        const p = action.params as Record<string, unknown>;
+        if (action.type === 'run-code' && typeof p.store === 'string') s.writes.add(p.store);
+        if (action.type === 'set' && typeof p.key === 'string') s.writes.add(p.key);
       }
     }
 
@@ -92,6 +100,7 @@ function scanBlocks(blocks: Block[] | undefined, s: Scan): void {
         for (const action of item.actions ?? []) {
           const p = action.params as Record<string, unknown>;
           if (action.type === 'set' && typeof p.key === 'string') s.writes.add(p.key);
+          if (action.type === 'run-code' && typeof p.store === 'string') s.writes.add(p.store);
           if (action.type === 'nav' && typeof p.to === 'string') {
             s.navs.push({ to: p.to, via: item.label, source: 'button' });
           }
@@ -135,6 +144,11 @@ export function buildGraph(
 
   for (const page of pages) {
     const scan: Scan = { writes: new Set(), reads: new Set(), navs: [], embeds: 0 };
+    for (const action of page.config.beforeLoad ?? []) {
+      const p = action.params as Record<string, unknown>;
+      if (action.type === 'run-code' && typeof p.store === 'string') scan.writes.add(p.store);
+      if (action.type === 'set' && typeof p.key === 'string') scan.writes.add(p.key);
+    }
     scanBlocks(page.config.blocks, scan);
     // A modal is part of the page it hangs off, so its blocks count as the page's.
     for (const modal of Object.values(page.config.modals ?? {})) scanBlocks(modal.blocks, scan);

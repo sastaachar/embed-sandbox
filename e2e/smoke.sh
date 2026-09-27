@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # End-to-end smoke test against a running instance.
-#   BASE=http://127.0.0.1:8899 ./scripts/smoke.sh
+#   BASE=http://127.0.0.1:8899 ./e2e/smoke.sh
 set -euo pipefail
 
 BASE="${BASE:-http://127.0.0.1:8899}"

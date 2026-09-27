@@ -4,7 +4,9 @@ export type EmbedType =
   | 'liveboard' | 'viz' | 'search' | 'searchbar' | 'app' | 'spotter' | 'conversation';
 
 export interface EmbedAction {
-  type: 'set' | 'open-modal' | 'close-modal' | 'HostEvent' | 'nav' | 'open-url';
+  type: 'set' | 'open-modal' | 'close-modal' | 'HostEvent' | 'nav' | 'open-url' | 'run-code'
+    | 'remount' | 'update-embed';
+  /** run-code carries { name, code, store?, timeout?, fallback? }. */
   params: Record<string, unknown>;
 }
 
@@ -12,6 +14,8 @@ export interface EmbedEventHandler {
   type: string;
   id?: string;
   actions: EmbedAction[];
+  /** A run-code action whose return value answers the SDK responder (ApiIntercept…). */
+  respond?: EmbedAction;
 }
 
 export interface EmbedSpec {
@@ -24,6 +28,8 @@ export interface EmbedSpec {
   /** The SDK constructor config, whole. */
   config: Record<string, unknown>;
   embedEventHandlers?: EmbedEventHandler[];
+  /** Runs before the embed is constructed; a run-code result object amends the config. */
+  beforeRender?: EmbedAction[];
 }
 
 export interface Column {
@@ -45,6 +51,10 @@ export interface Block {
 }
 
 export interface Page {
+  /** Hand-written code for the ‹/› view, per flavour. */
+  codeOverride?: { cdn?: string; esm?: string; react?: string; note?: string };
+  /** Runs before the page's blocks render. */
+  beforeLoad?: EmbedAction[];
   title?: string;
   blocks: Block[];
   [k: string]: unknown;

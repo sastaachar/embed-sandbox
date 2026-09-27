@@ -1,7 +1,7 @@
 /**
  * Verifies that a published page updates itself when the document changes — no reload,
  * and without remounting embeds whose config did not change.
- *   BASE=http://127.0.0.1:8899 node scripts/live-check.mjs
+ *   BASE=http://127.0.0.1:8899 node e2e/live-check.mjs
  */
 import { createRequire } from 'node:module';
 const require = createRequire(

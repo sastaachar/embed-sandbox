@@ -2,6 +2,7 @@ import type { EmbedSpec, ProjectConfig } from './types';
 import { clusterFingerprint, clusterReady, clusterToken } from './cluster';
 import { PID } from './api';
 import { effectiveProject } from '../../common/theme';
+import { resolveTokens } from './vars';
 
 /*
  * A pre-rendered embed lives in the SDK's body-level wrapper, so re-rendering or
@@ -201,7 +202,18 @@ export function ensureSdk(
   return ready;
 }
 
-export function mount(loc: string, spec: EmbedSpec, host: HTMLElement, lib: AnyLib): string | null {
+/**
+ * `vars` is the project's declared variable defaults. The merged config goes through
+ * the same {{key}} substitution the published runtime performs before it constructs an
+ * embed — including embedDefaults, which can hold tokens of its own.
+ */
+export function mount(
+  loc: string,
+  spec: EmbedSpec,
+  host: HTMLElement,
+  lib: AnyLib,
+  vars: Record<string, unknown> = {},
+): string | null {
   const existing = slots[loc];
   if (existing) {
     if (existing.host !== host || existing.prerendered !== Boolean(spec.preRender)) {
@@ -217,7 +229,7 @@ export function mount(loc: string, spec: EmbedSpec, host: HTMLElement, lib: AnyL
   if (!Cls) return `this SDK has no ${spec.type} embed`;
 
   const prerendered = Boolean(spec.preRender);
-  const cfg: Record<string, unknown> = { ...embedDefaults, ...spec.config };
+  const cfg = resolveTokens({ ...embedDefaults, ...spec.config }, vars) as Record<string, unknown>;
   // No invented id: preRender requires one, so if it is missing that is the author's
   // to fix and the schema says so.
   if (!cfg.fullHeight && !cfg.frameParams) {

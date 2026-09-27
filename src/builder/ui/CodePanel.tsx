@@ -43,8 +43,20 @@ const BLURB: Record<Flavor, string> = {
   esm: 'The plain SDK: construct an embed, call render(), trigger() from your own buttons.',
 };
 
-export function CodePanel(props: { path: string; onClose: () => void }) {
-  const [flavor, setFlavor] = useState<Flavor>('react');
+/** A page may ship hand-written code for one flavour; open on that one. */
+function authoredFlavor(over: Record<string, unknown> | undefined): Flavor | null {
+  if (!over) return null;
+  for (const f of ['react', 'esm'] as Flavor[]) if (over[f]) return f;
+  return null;
+}
+
+export function CodePanel(props: {
+  path: string;
+  onClose: () => void;
+  codeOverride?: Record<string, unknown>;
+}) {
+  const [flavor, setFlavor] = useState<Flavor>(authoredFlavor(props.codeOverride) ?? 'react');
+  const [note, setNote] = useState('');
   // The JS flavour has two halves: the code, and the markup it targets.
   const [part, setPart] = useState<'js' | 'html'>('js');
   const [code, setCode] = useState<string | null>(null);
@@ -63,7 +75,13 @@ export function CodePanel(props: { path: string; onClose: () => void }) {
     const q = htmlPart ? '&part=html' : '';
     fetch(`/api/projects/${PID}/code?path=${encodeURIComponent(props.path)}&flavor=${flavor}${q}`)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error('could not generate the code'))))
-      .then((body) => { if (live) setCode(body.code ?? ''); })
+      .then((body) => {
+        if (!live) return;
+        setCode(body.code ?? '');
+        setNote(body.overridden
+          ? (body.note || 'Hand-written for this page, not the generated export.')
+          : '');
+      })
       .catch((e) => { if (live) setErr((e as Error).message); });
     return () => { live = false; };
   }, [flavor, htmlPart, props.path]);
@@ -99,10 +117,11 @@ export function CodePanel(props: { path: string; onClose: () => void }) {
             <button
               key={f}
               className={flavor === f ? 'on' : ''}
+              title={props.codeOverride?.[f] ? 'Hand-written for this page' : undefined}
               id={`flavor-${f}`}
               onClick={() => { setFlavor(f); setPart('js'); }}
             >
-              {LABEL[f]}
+              {LABEL[f]}{props.codeOverride?.[f] ? ' •' : ''}
             </button>
           ))}
         </div>
@@ -118,7 +137,11 @@ export function CodePanel(props: { path: string; onClose: () => void }) {
         <button onClick={props.onClose}>Close</button>
       </div>
 
-      <p className="hint">{htmlPart ? 'The elements the JS selectors point at — paste this beside the code.' : BLURB[flavor]}</p>
+      <p className="hint">
+        {note || (htmlPart
+          ? 'The elements the JS selectors point at — paste this beside the code.'
+          : BLURB[flavor])}
+      </p>
       {err && <p className="dlg-err">{err}</p>}
 
       {html !== null ? (

@@ -83,6 +83,8 @@ function actionSource(a: EmbedAction): string {
       return `  Ether.go(${JSON.stringify(p.to)});`;
     case 'open-url':
       return `  window.open(${JSON.stringify(p.url)}, ${JSON.stringify(p.target || '_blank')});`;
+    case 'run-code':
+      return `  Ether.runCode(${JSON.stringify(p.code)}, payload)${p.store ? `.then((v) => Ether.setVariable(${JSON.stringify(p.store)}, v))` : ''};`;
     default: {
       const payload = p.payload ?? p.data;
       const data = payload === undefined ? '' : `, ${JSON.stringify(payload)}`;
@@ -130,6 +132,8 @@ function buttonActionSource(a: EmbedAction): string {
       return `Ether.openModal(${JSON.stringify(p.name)})`;
     case 'close-modal':
       return `Ether.closeModal()`;
+    case 'run-code':
+      return `Ether.runCode(${JSON.stringify(p.code)})${p.store ? `.then((v) => Ether.setVariable(${JSON.stringify(p.store)}, v))` : ''}`;
     default: {
       const { one, many } = targetExpr(p.targets);
       const payload = p.payload === undefined
