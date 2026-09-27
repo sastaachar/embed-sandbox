@@ -526,34 +526,32 @@ function landing(origin: string): string {
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
 :root{
-  --paper:#f4f1ea; --surface:#fffdf8; --ink:#2e2a25; --muted:#6e675d; --rule:#e4ded2;
-  --accent:#a84e37; --accent-ink:#fffdf8; --sage:#5c7352; --danger:#9c3a2c;
-  --panel:#3b322c; --panel-ink:#f1ebe1; --panel-muted:#a79c90; --panel-rule:#4d423a;
-  --panel-code:#332b26; --clay:#e0a385;
-  --shadow:0 20px 50px -20px rgba(59,50,44,.45);
-  --r-lg:22px; --r:12px; --r-sm:8px; --r-pill:999px; --pad:clamp(14px,1.6vw,22px);
+  --bg:#f6f7f9; --surface:#fff; --ink:#16181d; --muted:#6b7280; --line:#e3e6ec;
+  --accent:#2f6df6; --accent-soft:#e8effe; --accent-ink:#fff; --accent-strong:#1f55d0;
+  --danger:#c8372d;
+  --shadow-lg:0 12px 32px rgba(16,24,40,.16);
+  --r-lg:14px; --r:10px; --r-sm:6px; --pill:999px; --pad:clamp(14px,1.6vw,22px);
   --sans:'Archivo','Helvetica Neue',Helvetica,Arial,sans-serif;
   --mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
-  --paper:#1a1714; --surface:#211d1a; --ink:#ede8e0; --muted:#9e968b; --rule:#322c26;
-  --accent:#d9765a; --accent-ink:#1a1714; --sage:#90a883; --danger:#e8836f;
-  --panel:#2e2823; --panel-rule:#413931; --panel-code:#262019;
-  --shadow:0 20px 50px -20px rgba(0,0,0,.65);
+  --bg:#0f1115; --surface:#171a21; --ink:#e8eaee; --muted:#939aa8; --line:#262b34;
+  --accent:#6f9bff; --accent-soft:#1b2436; --accent-ink:#0f1115; --accent-strong:#6f9bff;
+  --danger:#ef6b60;
+  --shadow-lg:0 12px 32px rgba(0,0,0,.5);
 }}
 :root[data-theme="dark"]{
-  --paper:#1a1714; --surface:#211d1a; --ink:#ede8e0; --muted:#9e968b; --rule:#322c26;
-  --accent:#d9765a; --accent-ink:#1a1714; --sage:#90a883; --danger:#e8836f;
-  --panel:#2e2823; --panel-rule:#413931; --panel-code:#262019;
-  --shadow:0 20px 50px -20px rgba(0,0,0,.65);
+  --bg:#0f1115; --surface:#171a21; --ink:#e8eaee; --muted:#939aa8; --line:#262b34;
+  --accent:#6f9bff; --accent-soft:#1b2436; --accent-ink:#0f1115; --accent-strong:#6f9bff;
+  --danger:#ef6b60;
+  --shadow-lg:0 12px 32px rgba(0,0,0,.5);
 }
 *,*::before,*::after{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
 body{margin:0;min-height:100vh;padding:var(--pad);gap:clamp(14px,2vw,26px);
-background:var(--paper);color:var(--ink);font:400 15px/1.6 var(--sans);
+background:var(--bg);color:var(--ink);font:400 15px/1.6 var(--sans);
 display:grid;grid-template-columns:minmax(0,1.12fr) minmax(0,.88fr)}
 :focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:var(--r-sm)}
-.agent :focus-visible{outline-color:var(--clay)}
 
 .make{padding:clamp(18px,3.2vw,46px) clamp(10px,2.2vw,30px) 56px;min-width:0}
 .eyebrow{margin:0;font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
@@ -562,16 +560,16 @@ h1{margin:14px 0 0;font-weight:800;font-size:clamp(40px,7.4vw,86px);line-height:
 line-height:1.3;letter-spacing:-.015em;color:var(--ink)}
 .deck em{font-style:normal;color:var(--muted)}
 
-h2.sec{margin:50px 0 0;padding-top:14px;border-top:1px solid var(--rule);
+h2.sec{margin:50px 0 0;padding-top:14px;border-top:1px solid var(--line);
 font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
-#createCard{margin-top:44px;padding-top:6px;border-top:1px solid var(--rule)}
+#createCard{margin-top:44px;padding-top:6px;border-top:1px solid var(--line)}
 
 .field{margin-top:18px}
 label{display:block;font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin-bottom:7px}
-input{width:100%;font:400 16px/1.4 var(--sans);padding:13px 15px;color:var(--ink);
-background:var(--surface);border:1px solid var(--rule);border-radius:var(--r)}
-input::placeholder{color:var(--muted);opacity:.65}
-input:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent)}
+input{width:100%;font:400 16px/1.4 var(--sans);padding:12px 14px;color:var(--ink);
+background:var(--surface);border:1px solid var(--line);border-radius:var(--r)}
+input::placeholder{color:var(--muted);opacity:.75}
+input:focus{outline:0;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}
 @media (max-width:520px){.grid2{grid-template-columns:1fr}}
 
@@ -581,78 +579,75 @@ details.adv>summary::-webkit-details-marker{display:none}
 details.adv>summary::before{content:"+";display:inline-block;width:1.1em;font-weight:700;color:var(--muted)}
 details.adv[open]>summary::before{content:"\\2212"}
 
-button{font:600 15px/1 var(--sans);cursor:pointer;border-radius:var(--r);padding:14px 20px;
-border:1px solid var(--rule);background:var(--surface);color:var(--ink);
+button{font:600 15px/1 var(--sans);cursor:pointer;border-radius:var(--r);padding:13px 19px;
+border:1px solid var(--line);background:var(--surface);color:var(--ink);
 display:inline-flex;align-items:center;justify-content:center;gap:8px}
+button:hover{border-color:var(--accent);color:var(--accent-strong)}
 .primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
-button:hover{background:color-mix(in srgb,var(--accent) 9%,var(--surface))}
-.primary:hover{background:color-mix(in srgb,var(--accent) 88%,#000);border-color:transparent}
+.primary:hover{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);filter:brightness(1.07)}
 button:disabled{opacity:.6;cursor:progress}
-#createBtn{margin-top:24px;width:100%;padding:18px;font-size:17px;letter-spacing:-.01em;
-box-shadow:0 8px 20px -12px var(--accent)}
+#createBtn{margin-top:24px;width:100%;padding:17px;font-size:17px;letter-spacing:-.01em}
 .fine{margin:13px 0 0;font-size:12.5px;color:var(--muted)}
 .err{margin:14px 0 0;font-size:14px;font-weight:600;color:var(--danger)}
 
-.copyrow{display:flex;align-items:stretch;border:1px solid var(--rule);
+.copyrow{display:flex;align-items:stretch;border:1px solid var(--line);
 border-radius:var(--r);background:var(--surface);overflow:hidden}
 .copyrow code{flex:1;min-width:0;overflow-x:auto;white-space:nowrap;border:0;background:transparent;
-font:400 13px/1.5 var(--mono);padding:12px 14px;color:var(--ink)}
-.copyrow button{flex:0 0 auto;padding:0 16px;font-size:11px;font-weight:700;
+font:400 13px/1.5 var(--mono);padding:11px 13px;color:var(--ink)}
+.copyrow button{flex:0 0 auto;padding:0 15px;font-size:11px;font-weight:700;
 letter-spacing:.09em;text-transform:uppercase;color:var(--muted);
-border:0;border-left:1px solid var(--rule);border-radius:0;background:transparent}
-.copyrow button:hover{background:color-mix(in srgb,var(--accent) 12%,transparent);color:var(--accent)}
+border:0;border-left:1px solid var(--line);border-radius:0;background:transparent}
+.copyrow button:hover{background:var(--accent-soft);color:var(--accent-strong)}
 
-.mine-row{display:flex;align-items:baseline;gap:14px;padding:14px 0;border-bottom:1px solid var(--rule)}
+.mine-row{display:flex;align-items:baseline;gap:14px;padding:14px 0;border-bottom:1px solid var(--line)}
 .mine-row:last-child{border-bottom:0}
 .mine-name{flex:1;min-width:0}
 .mine-name b{display:block;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mine-name code{font:400 11.5px/1.4 var(--mono);color:var(--muted)}
-.mine-row a{font-size:13px;font-weight:600;color:var(--sage);text-decoration:none;white-space:nowrap;
-padding:5px 11px;border-radius:var(--r-pill);background:color-mix(in srgb,var(--sage) 11%,transparent)}
-.mine-row a:hover{background:color-mix(in srgb,var(--sage) 20%,transparent)}
-.mine-x{border:0;padding:4px 7px;font-size:13px;color:var(--muted);background:none;border-radius:var(--r-pill)}
-.mine-x:hover{background:color-mix(in srgb,var(--danger) 12%,transparent);color:var(--danger)}
+.mine-row a{font-size:13px;font-weight:600;color:var(--accent-strong);text-decoration:none;white-space:nowrap;
+padding:5px 11px;border-radius:var(--pill);background:var(--accent-soft)}
+.mine-row a:hover{filter:brightness(.96)}
+.mine-x{border:0;padding:4px 7px;font-size:13px;color:var(--muted);background:none;border-radius:var(--pill)}
+.mine-x:hover{border:0;color:var(--danger);background:var(--bg)}
 
-.agent{background:var(--panel);color:var(--panel-ink);border-radius:var(--r-lg);box-shadow:var(--shadow);
-padding:clamp(26px,3.4vw,48px) clamp(22px,2.8vw,42px) 46px;min-width:0;
+.agent{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);
+box-shadow:var(--shadow-lg);color:var(--ink);
+padding:clamp(26px,3.4vw,44px) clamp(20px,2.6vw,38px) 42px;min-width:0;
 position:sticky;top:var(--pad);align-self:start;
 min-height:calc(100vh - var(--pad) * 2);max-height:calc(100vh - var(--pad) * 2);overflow-y:auto}
-.agent .eyebrow{color:var(--clay)}
+.agent .eyebrow{color:var(--accent-strong)}
 .agent h2{margin:14px 0 0;font-weight:800;font-size:clamp(30px,3.2vw,40px);
 line-height:1.05;letter-spacing:-.03em}
-.agent .pl{margin:14px 0 0;max-width:40ch;font-size:15px;color:var(--panel-muted)}
-.agent .pl b{color:var(--panel-ink);font-weight:600}
+.agent .pl{margin:14px 0 0;max-width:40ch;font-size:15px;color:var(--muted)}
+.agent .pl b{color:var(--ink);font-weight:600}
 .steps{list-style:none;margin:30px 0 0;padding:0;counter-reset:s}
 .steps li{display:grid;grid-template-columns:30px minmax(0,1fr);gap:14px;
-padding:22px 0;border-top:1px solid var(--panel-rule)}
+padding:22px 0;border-top:1px solid var(--line)}
 .steps li::before{counter-increment:s;content:counter(s,decimal-leading-zero);
-font:500 12px/1.6 var(--mono);color:var(--clay);letter-spacing:.06em}
+font:500 12px/1.6 var(--mono);color:var(--accent-strong);letter-spacing:.06em}
 .steps h3{margin:0 0 10px;font-size:14px;font-weight:700;letter-spacing:-.005em}
-.steps p{margin:9px 0 0;font-size:13px;line-height:1.6;color:var(--panel-muted)}
+.steps p{margin:9px 0 0;font-size:13px;line-height:1.6;color:var(--muted)}
 .steps p.also{margin:15px 0 8px;font-size:12px}
-.how{display:inline-flex;margin:0 0 14px;padding:3px;border-radius:var(--r-pill);
-background:var(--panel-code);border:1px solid var(--panel-rule)}
+.steps a{color:var(--accent-strong);text-underline-offset:3px}
+.agent .copyrow{background:var(--bg)}
+.agent .copyrow code{white-space:pre-wrap;overflow-x:visible;word-break:break-word}
+.how{display:inline-flex;margin:0 0 14px;padding:3px;border-radius:var(--pill);
+background:var(--bg);border:1px solid var(--line)}
 .how button{padding:8px 17px;font:700 11px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;
-border:0;border-radius:var(--r-pill);background:transparent;color:var(--panel-muted)}
-.how button:hover{background:transparent;color:var(--panel-ink)}
-.how button[aria-pressed="true"]{background:var(--clay);color:var(--panel)}
+border:0;border-radius:var(--pill);background:transparent;color:var(--muted)}
+.how button:hover{border:0;background:transparent;color:var(--ink)}
+.how button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
 .howline{display:grid;grid-template-columns:16px minmax(0,1fr);gap:8px;
-margin:0 0 8px;font-size:13px;line-height:1.6;color:var(--panel-muted)}
-.hn{font:500 12px/1.6 var(--mono);color:var(--clay)}
-.howline b{color:var(--panel-ink);font-weight:600}
-.steps a{color:var(--clay);text-underline-offset:3px}
-.agent .copyrow{border-color:var(--panel-rule);background:var(--panel-code)}
-.agent .copyrow code{color:var(--panel-ink);white-space:pre-wrap;overflow-x:visible;word-break:break-word}
-.agent .copyrow button{border-left-color:var(--panel-rule);color:var(--panel-muted)}
-.agent .copyrow button:hover{background:var(--clay);color:var(--panel)}
-code.inline{font:400 .88em/1 var(--mono);background:var(--panel-code);
-border:1px solid var(--panel-rule);border-radius:var(--r-sm);padding:2px 6px}
-.make code.inline{background:var(--surface);border-color:var(--rule)}
-details.api{margin-top:30px;border-top:1px solid var(--panel-rule);padding-top:20px}
-details.api>summary{cursor:pointer;font-size:13px;font-weight:600;color:var(--panel-muted)}
-details.api>summary:hover{color:var(--panel-ink)}
-pre{margin:14px 0 0;background:var(--panel-code);border:1px solid var(--panel-rule);
-border-radius:var(--r);padding:15px;overflow-x:auto;font:400 12px/1.6 var(--mono);color:var(--panel-ink)}
+margin:0 0 8px;font-size:13px;line-height:1.6;color:var(--muted)}
+.hn{font:500 12px/1.6 var(--mono);color:var(--accent-strong)}
+.howline b{color:var(--ink);font-weight:600}
+code.inline{font:400 .88em/1 var(--mono);background:var(--bg);
+border:1px solid var(--line);border-radius:var(--r-sm);padding:2px 6px}
+details.api{margin-top:28px;border-top:1px solid var(--line);padding-top:20px}
+details.api>summary{cursor:pointer;font-size:13px;font-weight:600;color:var(--muted)}
+details.api>summary:hover{color:var(--ink)}
+pre{margin:14px 0 0;background:var(--bg);border:1px solid var(--line);
+border-radius:var(--r);padding:15px;overflow-x:auto;font:400 12px/1.6 var(--mono);color:var(--ink)}
 
 @media (max-width:940px){
   body{grid-template-columns:1fr;align-content:start}
@@ -664,7 +659,7 @@ border-radius:var(--r);padding:15px;overflow-x:auto;font:400 12px/1.6 var(--mono
 <main class="make">
   <p class="eyebrow">ThoughtSpot · Visual Embed SDK</p>
   <h1>embed-sandbox</h1>
-  <p class="deck">Create a project — <em>or connect an AI agent and let it build one.</em></p>
+  <p class="deck">Create a project, <em>or connect an AI agent and let it build one.</em></p>
 
   <section id="createCard">
     <div class="field">
@@ -698,7 +693,7 @@ border-radius:var(--r);padding:15px;overflow-x:auto;font:400 12px/1.6 var(--mono
 <aside class="agent">
   <p class="eyebrow">Model Context Protocol</p>
   <h2>Build it with an AI agent</h2>
-  <p class="pl">Claude, ChatGPT, Cursor — any MCP client.</p>
+  <p class="pl">Claude, ChatGPT, Cursor. Any MCP client.</p>
 
   <ol class="steps">
     <li>
@@ -721,17 +716,17 @@ border-radius:var(--r);padding:15px;overflow-x:auto;font:400 12px/1.6 var(--mono
           then create an app.</span></p>
           <p class="howline"><span class="hn">3</span><span>Paste the URL below, including the
           <code class="inline">/mcp</code> path. No authentication.</span></p>
-          <p>The menu keeps moving — <a href="https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt"
+          <p>The menu keeps moving. <a href="https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt"
           target="_blank" rel="noopener">OpenAI's guide</a> is canonical.</p>
         </div>
-        <p class="also">MCP server URL — any client:</p>
+        <p class="also">MCP server URL for any client:</p>
         <div class="copyrow"><code id="mcpTop"></code><button data-copy="mcpTop">Copy</button></div>
       </div>
     </li>
     <li>
       <div>
         <h3>Build a ThoughtSpot embed project</h3>
-        <p>Ask for the demo you want. No token to start — the agent creates the project,
+        <p>Ask for the demo you want. No token to start. The agent creates the project,
         and the server hands it the <a href="/mcp/manual.md">manual</a>.</p>
       </div>
     </li>
@@ -783,7 +778,7 @@ border-radius:var(--r);padding:15px;overflow-x:auto;font:400 12px/1.6 var(--mono
         var open = function(){ location.replace('/build/' + d.projectId + '#t=' + encodeURIComponent(d.editToken)); };
         try { navigator.clipboard.writeText(d.editToken).then(open, open); } catch (e2) { open(); }
       })
-      .catch(function(){ fail('Network error — please try again.'); });
+      .catch(function(){ fail('Network error. Please try again.'); });
   });
 
   document.addEventListener('click', function(ev){
