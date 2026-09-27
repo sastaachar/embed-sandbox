@@ -640,23 +640,23 @@ function landing(origin: string): string {
 :root{
   --bg:#f6f7f9; --surface:#fff; --ink:#16181d; --muted:#6b7280; --line:#e3e6ec;
   --accent:#2f6df6; --accent-soft:#e8effe; --accent-ink:#fff; --accent-strong:#1f55d0;
-  --danger:#c8372d;
+  --mark:#1f55d0; --switch:#2f6df6; --danger:#c8372d;
   --shadow-lg:0 12px 32px rgba(16,24,40,.16);
   --r-lg:14px; --r:10px; --r-sm:6px; --pill:999px; --pad:clamp(14px,1.6vw,22px);
   --sans:'Archivo','Helvetica Neue',Helvetica,Arial,sans-serif;
   --mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
-  --bg:#0f1115; --surface:#171a21; --ink:#e8eaee; --muted:#939aa8; --line:#262b34;
-  --accent:#6f9bff; --accent-soft:#1b2436; --accent-ink:#0f1115; --accent-strong:#6f9bff;
-  --danger:#ef6b60;
-  --shadow-lg:0 12px 32px rgba(0,0,0,.5);
+  --bg:#0b1118; --surface:#161f2b; --ink:#e8e4da; --muted:#93a2b4; --line:#24303f;
+  --accent:#5b8dfa; --accent-soft:#1a2740; --accent-ink:#0b1017; --accent-strong:#8fb4ff;
+  --mark:#d9a441; --switch:#d9a441; --danger:#ef7a6d;
+  --shadow-lg:0 18px 44px rgba(0,0,0,.58);
 }}
 :root[data-theme="dark"]{
-  --bg:#0f1115; --surface:#171a21; --ink:#e8eaee; --muted:#939aa8; --line:#262b34;
-  --accent:#6f9bff; --accent-soft:#1b2436; --accent-ink:#0f1115; --accent-strong:#6f9bff;
-  --danger:#ef6b60;
-  --shadow-lg:0 12px 32px rgba(0,0,0,.5);
+  --bg:#0b1118; --surface:#161f2b; --ink:#e8e4da; --muted:#93a2b4; --line:#24303f;
+  --accent:#5b8dfa; --accent-soft:#1a2740; --accent-ink:#0b1017; --accent-strong:#8fb4ff;
+  --mark:#d9a441; --switch:#d9a441; --danger:#ef7a6d;
+  --shadow-lg:0 18px 44px rgba(0,0,0,.58);
 }
 *,*::before,*::after{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
@@ -727,7 +727,7 @@ box-shadow:var(--shadow-lg);color:var(--ink);
 padding:clamp(26px,3.4vw,44px) clamp(20px,2.6vw,38px) 42px;min-width:0;
 position:sticky;top:var(--pad);align-self:start;
 min-height:calc(100vh - var(--pad) * 2);max-height:calc(100vh - var(--pad) * 2);overflow-y:auto}
-.agent .eyebrow{color:var(--accent-strong)}
+.agent .eyebrow{color:var(--mark)}
 .agent h2{margin:14px 0 0;font-weight:800;font-size:clamp(30px,3.2vw,40px);
 line-height:1.05;letter-spacing:-.03em}
 .agent .pl{margin:14px 0 0;max-width:40ch;font-size:15px;color:var(--muted)}
@@ -736,7 +736,7 @@ line-height:1.05;letter-spacing:-.03em}
 .steps li{display:grid;grid-template-columns:30px minmax(0,1fr);gap:14px;
 padding:22px 0;border-top:1px solid var(--line)}
 .steps li::before{counter-increment:s;content:counter(s,decimal-leading-zero);
-font:500 12px/1.6 var(--mono);color:var(--accent-strong);letter-spacing:.06em}
+font:500 12px/1.6 var(--mono);color:var(--mark);letter-spacing:.06em}
 .steps h3{margin:0 0 10px;font-size:14px;font-weight:700;letter-spacing:-.005em}
 .steps p{margin:9px 0 0;font-size:13px;line-height:1.6;color:var(--muted)}
 .steps p.also{margin:15px 0 8px;font-size:12px}
@@ -748,10 +748,10 @@ background:var(--bg);border:1px solid var(--line)}
 .how button{padding:8px 17px;font:700 11px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;
 border:0;border-radius:var(--pill);background:transparent;color:var(--muted)}
 .how button:hover{border:0;background:transparent;color:var(--ink)}
-.how button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+.how button[aria-pressed="true"]{background:var(--switch);color:var(--accent-ink)}
 .howline{display:grid;grid-template-columns:16px minmax(0,1fr);gap:8px;
 margin:0 0 8px;font-size:13px;line-height:1.6;color:var(--muted)}
-.hn{font:500 12px/1.6 var(--mono);color:var(--accent-strong)}
+.hn{font:500 12px/1.6 var(--mono);color:var(--mark)}
 .howline b{color:var(--ink);font-weight:600}
 code.inline{font:400 .88em/1 var(--mono);background:var(--bg);
 border:1px solid var(--line);border-radius:var(--r-sm);padding:2px 6px}
