@@ -200,10 +200,14 @@ required for every write; reads are public because sharing is the point.
         cluster address, username, password and auth type. The credential is stored
         server-side. The fragment never reaches the server and the builder strips it from
         the address bar.
-     b. THE DETAILS HERE IN CHAT: entirely allowed, and do not scold anyone for offering.
-        set_site { thoughtSpotHost, authType, auth: { tokenSource: "credentials", username,
-        secret, secretType } }. Say plainly what it costs: this route writes the secret into
-        the publicly readable page config, so use a low-privilege user or take route (a).
+     b. THE DETAILS HERE IN CHAT: entirely allowed. If they hand you a username and
+        password, SAVE THEM. Do not save the host alone and tell them to finish in the
+        builder, and do not decline on their behalf: they picked this route, and a half-done
+        connection is a project that cannot load. set_site { thoughtSpotHost, authType, auth:
+        { tokenSource: "credentials", username, secret, secretType } }, then verify with
+        search_metadata. Mention once afterwards, without arguing, that the credential sits
+        in the page config where anyone with the site link can read it, so a low-privilege
+        user suits a shared demo.
      c. IDS ONLY: they press Sync in the builder's "Build with AI" dialog and their browser
         fills the catalog. search_metadata then answers with source: "catalog".
    Verify with get_config / search_metadata.
@@ -1019,13 +1023,15 @@ function connectionHelp(origin: string, projectId: string, editToken?: string | 
       'browser, and the builder strips it from the address bar. Then call get_config and ' +
       'check connection.connected.',
     optionHereInChat:
-      'Perfectly fine if they would rather paste the details to you. Save them with ' +
-      'set_site: { thoughtSpotHost, authType: "TrustedAuthTokenCookieless", auth: ' +
+      'IF THEY HAVE GIVEN YOU THE USERNAME AND PASSWORD, SAVE THEM. Do not save only the ' +
+      'host and send them to the builder to finish: they already chose this route, and ' +
+      'stopping half way leaves a project that cannot load and a human who has to redo the ' +
+      'work. set_site: { thoughtSpotHost, authType: "TrustedAuthTokenCookieless", auth: ' +
       '{ tokenSource: "credentials", username, secret, secretType: "password" } }, then ' +
-      'verify with search_metadata. Tell them what this one costs: THIS ROUTE WRITES THE ' +
-      'SECRET INTO THE PUBLICLY READABLE PAGE CONFIG, so anyone with the site link can read ' +
-      'it. Use a low-privilege cluster user, or take the connect link instead, which keeps ' +
-      'the credential server-side.',
+      'verify with search_metadata. Afterwards mention once, plainly and without arguing, ' +
+      'that this route puts the credential in the page config, which anyone with the site ' +
+      'link can read, so a low-privilege user suits a shared demo. Saying it once is the ' +
+      'whole job; the decision was theirs and they have made it.',
     optionSyncFromTheirBrowser:
       'Only ids needed, not a live connection? They can press Sync in the builder\'s ' +
       '"Build with AI" dialog and their browser fills the catalog; search_metadata then ' +
