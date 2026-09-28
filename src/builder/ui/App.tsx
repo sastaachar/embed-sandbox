@@ -23,7 +23,7 @@ const REMEMBER_KEY = `sb.tok.${PID}`;
 const NAME_KEY = `sb.name.${PID}`;
 
 /**
- * A link can carry its own way in: `/build/<id>#t=<editToken>&connect=1` opens the
+ * A link can carry its own way in: `/build/<id>#t=<buildId>&connect=1` opens the
  * builder already unlocked, with the Connect dialog up. That is how a cluster gets
  * connected now — there is no separate connect page, so there is one form to keep right.
  *
@@ -453,34 +453,34 @@ export function App() {
         <a href={`/p/${PID}/`} target="_blank" rel="noopener">Site ↗</a>
         <button
           id="copyToken"
-          title="Copy this project's edit token"
+          title="Copy this project's build id"
           onClick={async () => {
             try {
               await navigator.clipboard.writeText(getToken());
-              setStatus('edit token copied', 'ok');
+              setStatus('build id copied', 'ok');
             } catch {
               setStatus('could not copy — Build with AI shows it as text', 'err');
             }
           }}
         >
-          Copy token
+          Copy build id
         </button>
         <button
           id="rotate"
-          title="Issue a new edit token and stop the old one working everywhere"
+          title="Issue a new build id and stop the old one working everywhere"
           onClick={() => setDialog({ kind: 'rotate' })}
         >
-          Rotate token
+          Rotate build id
         </button>
         <button
           id="forget"
-          title="Remove this project's edit token from this browser"
+          title="Remove this project's build id from this browser"
           onClick={() => {
             try { localStorage.removeItem(REMEMBER_KEY); localStorage.removeItem(NAME_KEY); } catch { /* private mode */ }
-            setStatus('token forgotten — this browser will ask again', 'ok');
+            setStatus('build id forgotten — this browser will ask again', 'ok');
           }}
         >
-          Forget token
+          Forget build id
         </button>
         {agentLock && !lockDismissed && (
           <span
@@ -686,7 +686,7 @@ export function App() {
       )}
       {dialog?.kind === 'rotate' && (
         <ConfirmDialog
-          title="Rotate the edit token?"
+          title="Rotate the build id?"
           body={
             'A new token replaces this one immediately. Every existing copy stops working: '
             + 'other browsers, any MCP connector it was added to, and any /build link still '
@@ -701,9 +701,9 @@ export function App() {
               try { localStorage.setItem(REMEMBER_KEY, fresh); } catch { /* private mode */ }
               try {
                 await navigator.clipboard.writeText(fresh);
-                setStatus('token rotated and copied — update anywhere the old one was pasted', 'ok');
+                setStatus('build id rotated and copied — update anywhere the old one was pasted', 'ok');
               } catch {
-                setStatus('token rotated — Copy token puts the new one on your clipboard', 'ok');
+                setStatus('build id rotated — Copy build id puts the new one on your clipboard', 'ok');
               }
             } catch (err) {
               setStatus((err as Error).message, 'err');
@@ -714,7 +714,7 @@ export function App() {
       {dialog?.kind === 'buildAi' && (
         <BuildWithAiDialog
           projectId={PID}
-          editToken={getToken()}
+          buildId={getToken()}
           catalogCount={d.config.catalog?.items?.length || 0}
           syncedAt={d.config.catalog?.syncedAt ?? null}
           onClose={() => setDialog(null)}
@@ -810,7 +810,7 @@ function Gate({ onOpen }: { onOpen: (token: string, remember: boolean) => Promis
   const [value, setValue] = useState('');
   // On by default: this is a personal build tool behind a per-project token, and being
   // asked to paste 64 hex characters on every visit is the thing people actually hate.
-  // The token stays under a per-project key, and Forget token clears it.
+  // The build id stays under a per-project key, and Forget build id clears it.
   const [remember, setRemember] = useState(true);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
@@ -835,7 +835,7 @@ function Gate({ onOpen }: { onOpen: (token: string, remember: boolean) => Promis
       // wiped — not remembering it would send a refresh straight back to this gate.
       if (LINK.token) {
         if (await verifyToken(LINK.token)) { await onOpen(LINK.token, true); setChecking(false); return; }
-        setErr('The edit token in that link is not valid for this project.');
+        setErr('The build id in that link is not valid for this project.');
       }
       // A bad link must not cost a good remembered token, so this is checked separately.
       if (stored) {
@@ -859,7 +859,7 @@ function Gate({ onOpen }: { onOpen: (token: string, remember: boolean) => Promis
     if (await verifyToken(candidate)) {
       await onOpen(candidate, remember);
     } else {
-      setErr('That edit token is not valid for this project.');
+      setErr('That build id is not valid for this project.');
       setBusy(false);
     }
   };
@@ -873,7 +873,7 @@ function Gate({ onOpen }: { onOpen: (token: string, remember: boolean) => Promis
           id="token"
           type="password"
           value={value}
-          placeholder="edit token"
+          placeholder="build id"
           onChange={(e) => setValue(e.target.value)}
           autoFocus
         />

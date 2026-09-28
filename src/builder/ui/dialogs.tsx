@@ -376,7 +376,7 @@ function CopyRow(props: { id: string; value: string; onCopy: () => void }) {
 
 export function BuildWithAiDialog(props: {
   projectId: string;
-  editToken: string;
+  buildId: string;
   catalogCount: number;
   syncedAt: number | null;
   onSync: (items: Array<{ id: string; name: string; type: string }>) => Promise<void>;
@@ -390,7 +390,7 @@ export function BuildWithAiDialog(props: {
     `Add this MCP server: ${mcpUrl}\n` +
     `First call read_manual once and follow it (also at ${mcpUrl}/manual.md).\n` +
     `Then build a ThoughtSpot embed demo in project ${props.projectId}.\n` +
-    `Pass projectId "${props.projectId}" and token "${props.editToken}" with every call.\n` +
+    `Pass projectId "${props.projectId}" and token "${props.buildId}" with every call.\n` +
     `Use search_metadata for real ids, get_config to read, save_config to write,\n` +
     `and lock_project before editing / unlock_project when done.`;
 
@@ -436,8 +436,8 @@ export function BuildWithAiDialog(props: {
       <Field label="Project id">
         <CopyRow id="mcpProject" value={props.projectId} onCopy={() => copy('Project id', props.projectId)} />
       </Field>
-      <Field label="Edit token">
-        <CopyRow id="mcpToken" value={props.editToken} onCopy={() => copy('Edit token', props.editToken)} />
+      <Field label="Build id">
+        <CopyRow id="mcpToken" value={props.buildId} onCopy={() => copy('Build id', props.buildId)} />
       </Field>
       <div className="dlg-row">
         <button className="primary" onClick={() => copy('Prompt', prompt)}>Copy prompt</button>

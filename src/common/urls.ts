@@ -16,6 +16,6 @@ export function publicUrls(origin: string, projectId: string) {
  * the server, and the builder strips it from the address bar as soon as it reads it, so
  * the token does not linger in history, bookmarks or a shared screenshot.
  */
-export function connectLink(origin: string, projectId: string, editToken: string) {
-  return `${origin}/build/${projectId}#t=${encodeURIComponent(editToken)}&connect=1`;
+export function connectLink(origin: string, projectId: string, buildId: string) {
+  return `${origin}/build/${projectId}#t=${encodeURIComponent(buildId)}&connect=1`;
 }

@@ -25,15 +25,15 @@ export async function verifyToken(candidate: string): Promise<boolean> {
 }
 
 /**
- * New edit token, old one dead. The client's own token is swapped in the same breath, or
+ * New build id, old one dead. The client's own token is swapped in the same breath, or
  * the next save from this tab fails with the token it just invalidated.
  */
 export async function rotateToken(): Promise<string> {
   const res = await fetch(`${BASE}/rotate-token`, { method: 'POST', headers: authH() });
   if (!res.ok) throw new Error('could not rotate the token');
-  const body = (await res.json()) as { editToken: string };
-  setToken(body.editToken);
-  return body.editToken;
+  const body = (await res.json()) as { buildId: string };
+  setToken(body.buildId);
+  return body.buildId;
 }
 
 export async function loadDoc(): Promise<Doc> {

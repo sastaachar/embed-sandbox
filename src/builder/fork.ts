@@ -41,7 +41,7 @@ button:disabled{opacity:.55;cursor:not-allowed}
 <body><main>
 <h1>Fork ${esc(name)}</h1>
 <p>${pageCount} page${pageCount === 1 ? '' : 's'}, the theme and every embed config, copied into
-a project of your own with its own edit token. The original is untouched.</p>
+a project of your own with its own build id. The original is untouched.</p>
 <button id="go">Fork it</button>
 <p id="err"></p>
 <script>
@@ -61,9 +61,9 @@ a project of your own with its own edit token. The original is untouched.</p>
         var b = r.body;
         // The token rides in the fragment, which never reaches the server; the builder
         // reads it and strips it from the address bar. Copy Token in there gets it back.
-        var open = function(){ location.replace('/build/' + b.projectId + '#t=' + encodeURIComponent(b.editToken)); };
+        var open = function(){ location.replace('/build/' + b.projectId + '#t=' + encodeURIComponent(b.buildId)); };
         try {
-          navigator.clipboard.writeText(b.editToken).then(open, open);
+          navigator.clipboard.writeText(b.buildId).then(open, open);
         } catch (e) { open(); }
       })
       .catch(function(e){

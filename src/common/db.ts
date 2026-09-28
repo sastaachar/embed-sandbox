@@ -276,7 +276,7 @@ export async function deleteProject(
 }
 
 /**
- * Issue a new edit token and forget the old one. Every holder of the old token loses access
+ * Issue a new build id and forget the old one. Every holder of the old token loses access
  * at once: other browsers, any MCP connector it was pasted into, a link that still carries
  * it in its fragment. That is the point of rotating, so the caller has to say so.
  */

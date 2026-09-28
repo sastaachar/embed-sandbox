@@ -182,18 +182,20 @@ pages re-render within ~5s of any save, and the visual builder follows along too
 
 ## Connecting
 
-Tokens are per project, shown once at create_project, and required for every write. Reads
-are public, because sharing is the point.
+Every project id has its own build id. The pair is what identifies a project you may edit:
+the project id says which project, the build id proves you may write to it. A build id is
+shown once, at create_project, and belongs to exactly one project, so a leaked one exposes
+that demo and no other. Reads are public, because sharing is the point.
 
 There are two ways to carry the token, and one of them keeps working when the other does not:
 
-- **Authorization header, preferred.** Authorization: Bearer <editToken>. Works on both
+- **Authorization header, preferred.** Authorization: Bearer <buildId>. Works on both
   mounts. At /mcp/<projectId> it is the only way and projectId is implied too.
 - **A token argument on each call.** Works at /mcp, and is the obvious thing to reach for,
   but see below.
 
 IF YOUR CLIENT BLOCKS TOOL ARGUMENTS THAT LOOK LIKE SECRETS, USE THE HEADER. A 64-character
-hex edit token is exactly what a safety filter is built to catch, and ChatGPT's does: the call
+hex build id is exactly what a safety filter is built to catch, and ChatGPT's does: the call
 is blocked before it reaches this server, the next call goes out without the token, and you
 get "invalid or missing token" for a token you did send. If you see that once, stop retrying
 the argument.
@@ -202,23 +204,23 @@ Tokens are deliberately per project, so a leaked one exposes one demo rather tha
 them. That means one connector per project, and the way to ask for it is exactly:
 
   1. create_project on the plain /mcp mount, which needs no token.
-  2. Take mcpUrl and editToken out of its answer. mcpUrl IS the per-project mount,
+  2. Take mcpUrl and buildId out of its answer. mcpUrl IS the per-project mount,
      /mcp/<projectId>. Do not invent a settings link or send them hunting for one.
   3. Ask the human to add a connector with that URL, authentication "API key", and
-     editToken as the key. Quote both values so they can paste them.
+     buildId as the key. Quote both values so they can paste them.
   4. Carry on through the new connector, where the token is implied and never appears in
      an argument.
 
 ## The workflow that works
 
-1. create_project → returns projectId, editToken (SAVE IT — shown once), and every URL.
+1. create_project → returns projectId, buildId (SAVE IT — shown once), and every URL.
 2. Connect a cluster — username + password are REQUIRED for search_metadata and anything
    cluster-backed. Read get_config.connection; if connected is false, PUT ALL THE ROUTES IN
    FRONT OF THE HUMAN and let them choose. Never leave them with "connect the sandbox" and
    no link. That is a dead end, and it is the one failure this section exists to prevent.
    Every tool result that hits a connection problem carries a connectionHelp block with the
-   link already built from your own edit token; relay it verbatim.
-     a. THE CONNECT LINK: /build/<id>#t=<editToken>&connect=1, ready-made in
+   link already built from your own build id; relay it verbatim.
+     a. THE CONNECT LINK: /build/<id>#t=<buildId>&connect=1, ready-made in
         connectionHelp.theLink. Opens the builder with the Connect dialog up; they type the
         cluster address, username, password and auth type. The credential is stored
         server-side. The fragment never reaches the server and the builder strips it from
@@ -757,7 +759,7 @@ const TOOLS = [
   {
     name: 'fork_site',
     description:
-      'Copy this entire project — site config and every page — into a brand-new project with its own edit token, leaving this one untouched. Use when someone wants their own version of a showcase to change freely. Returns the new project id, its edit token (shown once, unrecoverable), and its URLs. Hand the token to the user; they need it to edit the fork.',
+      'Copy this entire project — site config and every page — into a brand-new project with its own build id, leaving this one untouched. Use when someone wants their own version of a showcase to change freely. Returns the new project id, its build id (shown once, unrecoverable), and its URLs. Hand the token to the user; they need it to edit the fork.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   },
   {
@@ -813,7 +815,7 @@ const TOOLS = [
   {
     name: 'create_project',
     description:
-      'Make a new demo site and return its id, its edit token, and the URLs to open it. The token is shown once and never again — hand it back to the human. No token is needed to call this. If you have not called read_manual yet this session, do that first.',
+      'Make a new demo site and return its id, its build id, and the URLs to open it. The token is shown once and never again — hand it back to the human. No token is needed to call this. If you have not called read_manual yet this session, do that first.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -850,9 +852,9 @@ const TOOLS = [
     },
   },
   {
-    name: 'rotate_token',
+    name: 'rotate_build_id',
     description:
-      "Issue a new edit token for this project and stop the old one working. Use when a token has been pasted somewhere it should not have been, or when someone who had it should no longer. Requires the current token, so only a holder can rotate. Everything holding the old one breaks at once: other browsers, MCP connectors it was added to, and any /build link still carrying it in its fragment. Returns the new token ONCE, unrecoverable like the first: give it to the human before you do anything else. Takes confirm: true, so it cannot happen by accident.",
+      "Issue a new build id for this project and stop the old one working. Use when a token has been pasted somewhere it should not have been, or when someone who had it should no longer. Requires the current token, so only a holder can rotate. Everything holding the old one breaks at once: other browsers, MCP connectors it was added to, and any /build link still carrying it in its fragment. Returns the new token ONCE, unrecoverable like the first: give it to the human before you do anything else. Takes confirm: true, so it cannot happen by accident.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -897,10 +899,10 @@ function addTheServerFirst(origin: string): string {
     `- **Claude Desktop or claude.ai**: Settings, Connectors, Add custom connector, URL \`${url}\``,
     `- **ChatGPT**: open the new-connector dialog at https://chatgpt.com/plugins#settings/Connectors?create-connector=true&redirectAfter=%2Fplugins , paste \`${url}\`, Authentication: No authentication. Developer mode must be on first; on a Business or Enterprise workspace an admin turns it on under Permissions & Roles.`,
     `- **Cursor, Windsurf, Zed and the rest**: add a streamable-HTTP MCP server with URL \`${url}\``,
-    `- **Anything else**: streamable HTTP at \`${url}\`. Writes send \`Authorization: Bearer <edit token>\`; reads need no token.`,
+    `- **Anything else**: streamable HTTP at \`${url}\`. Writes send \`Authorization: Bearer <build id>\`; reads need no token.`,
     '',
     'Once a project exists, prefer adding it a second time as `' + url + '/<projectId>` with the',
-    'edit token as the API key. The token then travels in the Authorization header instead of',
+    'build id as the API key. The token then travels in the Authorization header instead of',
     'in your tool arguments, which is what stops a client-side secret filter from blocking the',
     'call (ChatGPT blocks it otherwise).',
     '',
@@ -950,7 +952,7 @@ export function manualMarkdown(addServerOrigin?: string | null): string {
     `${MANUAL}\n\n## Tool reference\n\n` +
     'Generated from the live tool definitions, so it cannot drift. Mounted at /mcp ' +
     '(not pinned to a project), every tool except read_manual and create_project also ' +
-    'takes `projectId` and `token`; at /mcp/<projectId> both are implied.\n\n' +
+    'takes `projectId` and `buildId`; at /mcp/<projectId> both are implied.\n\n' +
     `${ref}`
   );
 }
@@ -1009,7 +1011,7 @@ function connectionStatus(
   connection: { host: string; username: string; hasSecret: boolean } | null,
   origin: string,
   projectId: string,
-  editToken?: string | null,
+  buildId?: string | null,
 ) {
   const auth = cfg.auth;
   const host = connection?.host || cfg.thoughtSpotHost || null;
@@ -1026,8 +1028,8 @@ function connectionStatus(
     credentialShippedInPage: hasPublicSecret,
     // With the caller's own token spliced in, so it can be sent as-is. Without a token
     // (a public read) it is the tokenless form, which prompts for one.
-    connectUrl: editToken
-      ? connectLink(origin, projectId, editToken)
+    connectUrl: buildId
+      ? connectLink(origin, projectId, buildId)
       : publicUrls(origin, projectId).connectUrl,
   };
 }
@@ -1038,14 +1040,14 @@ function connectionStatus(
  * credential ALSO ships in the public page (the page mints its own token); for every other
  * auth type it stays server-side only.
  */
-function connectionHelp(origin: string, projectId: string, editToken?: string | null) {
+function connectionHelp(origin: string, projectId: string, buildId?: string | null) {
   // Built with the token the caller already authenticated with, so it is ready to paste
   // rather than a placeholder the agent has to fill in. ChatGPT could not fill it in and
   // ended up telling the human to "connect the sandbox" with no link at all.
-  const link = editToken
-    ? connectLink(origin, projectId, editToken)
-    : connectLink(origin, projectId, '<editToken>').replace('%3CeditToken%3E', '<editToken>');
-  const ready = !!editToken;
+  const link = buildId
+    ? connectLink(origin, projectId, buildId)
+    : connectLink(origin, projectId, '<buildId>').replace('%3CbuildId%3E', '<buildId>');
+  const ready = !!buildId;
   return {
     sendBothOptions:
       'Give the human BOTH routes and let them pick. Do not decide for them, and do not ' +
@@ -1055,9 +1057,9 @@ function connectionHelp(origin: string, projectId: string, editToken?: string | 
       'does with the credential (see note) and let them choose.',
     theLink: ready
       ? link
-      : link + ' (substitute the real edit token for <editToken> before sending)',
+      : link + ' (substitute the real build id for <buildId> before sending)',
     optionOnThePage:
-      `Send them this link: ${link}` + (ready ? '' : ' (with the real edit token in the #t= ' +
+      `Send them this link: ${link}` + (ready ? '' : ' (with the real build id in the #t= ' +
       'fragment)') + '. It opens the builder with the Connect dialog already up; they fill ' +
       'in the cluster address, username, password and auth type, and the credential is ' +
       'stored server-side. The token rides in the fragment, which never leaves their ' +
@@ -1140,12 +1142,12 @@ function connectionHelp(origin: string, projectId: string, editToken?: string | 
  * agent that never needed an id therefore never saw it: ChatGPT built project yxiqu9yr43bi,
  * handed over both links, and told the user to "configure a cluster" with no link at all.
  */
-function clusterNotice(origin: string, projectId: string, editToken: string | null, connected: boolean) {
+function clusterNotice(origin: string, projectId: string, buildId: string | null, connected: boolean) {
   if (connected) return undefined;
   return {
     connected: false,
-    connectUrl: editToken
-      ? connectLink(origin, projectId, editToken)
+    connectUrl: buildId
+      ? connectLink(origin, projectId, buildId)
       : publicUrls(origin, projectId).connectUrl,
     tellTheHuman:
       'No cluster is connected, so every embed on this site renders empty. Do not hand the ' +
@@ -1162,7 +1164,7 @@ async function callTool(
   name: string,
   args: Record<string, unknown>,
   origin: string,
-  editToken: string | null,
+  buildId: string | null,
 ): Promise<unknown> {
   switch (name) {
     case 'get_site': {
@@ -1258,10 +1260,11 @@ async function callTool(
       return {
         ok: true,
         projectId: forked.project.id,
+        buildId: forked.token,
         editToken: forked.token,
         forkedFrom: projectId,
         copiedPages: forked.copiedPages,
-        note: 'Give editToken to the user — it cannot be shown again, and without it the fork is read-only forever.',
+        note: 'Give buildId to the user — it cannot be shown again, and without it the fork is read-only forever.',
       };
     }
     case 'get_config': {
@@ -1275,7 +1278,7 @@ async function callTool(
         // A non-secret readout of the cluster connection, so you can tell whether a human
         // has filled it in (on the site or via you) and pull what they entered. When
         // `connected` is false, ask them to connect — see connectionHelp.
-        connection: connectionStatus(project.config, project.connection, origin, projectId, editToken),
+        connection: connectionStatus(project.config, project.connection, origin, projectId, buildId),
         updatedAt: project.updatedAt,
       };
     }
@@ -1305,19 +1308,19 @@ async function callTool(
       const saved = await getProject(env, projectId);
       const pages = await listPages(env, projectId);
       const saveStatus = saved
-        ? connectionStatus(saved.config, saved.connection, origin, projectId, editToken)
+        ? connectionStatus(saved.config, saved.connection, origin, projectId, buildId)
         : null;
       return {
         ok: true,
         config: saved?.config,
         pages: Object.fromEntries(pages.map((p) => [p.path, p.config])),
-        cluster: clusterNotice(origin, projectId, editToken, !!saveStatus?.connected),
+        cluster: clusterNotice(origin, projectId, buildId, !!saveStatus?.connected),
       };
     }
     case 'get_urls': {
       const project = await getProject(env, projectId);
       const status = project
-        ? connectionStatus(project.config, project.connection, origin, projectId, editToken)
+        ? connectionStatus(project.config, project.connection, origin, projectId, buildId)
         : null;
       return {
         projectId,
@@ -1326,10 +1329,10 @@ async function callTool(
         // it with the caller's own, or the agent grabs the tokenless field sitting next to
         // the working one and hands over a link that asks the human for a token they do not
         // have.
-        connectUrl: editToken
-          ? connectLink(origin, projectId, editToken)
+        connectUrl: buildId
+          ? connectLink(origin, projectId, buildId)
           : publicUrls(origin, projectId).connectUrl,
-        cluster: clusterNotice(origin, projectId, editToken, !!status?.connected),
+        cluster: clusterNotice(origin, projectId, buildId, !!status?.connected),
       };
     }
     case 'get_graph': {
@@ -1387,7 +1390,7 @@ async function callTool(
             items: cached,
             // The link goes out whether or not the catalog saved us: a 401 from the
             // cluster is exactly when the human needs somewhere to go.
-            connectionHelp: connectionHelp(origin, projectId, editToken),
+            connectionHelp: connectionHelp(origin, projectId, buildId),
             ...(cached.length ? {} : {
               note: answered
                 ? 'The cluster answered but refused the credentials in auth.credentials — ' +
@@ -1409,7 +1412,7 @@ async function callTool(
         syncedAt: cfg.catalog?.syncedAt ?? null,
         count: cached.length,
         items: cached,
-        connectionHelp: connectionHelp(origin, projectId, editToken),
+        connectionHelp: connectionHelp(origin, projectId, buildId),
         ...(cached.length ? {} : {
           note: 'No cluster is connected yet, so there is nothing to search. Offer the human ' +
             'BOTH routes in connectionHelp — the connect link, or the details here in chat — ' +
@@ -1417,15 +1420,16 @@ async function callTool(
         }),
       };
     }
-    case 'rotate_token': {
+    case 'rotate_build_id': {
       if (args.confirm !== true) {
-        throw new ValidationError('rotate_token needs confirm: true — it breaks every existing copy of the token');
+        throw new ValidationError('rotate_build_id needs confirm: true — it breaks every existing copy of the token');
       }
       const fresh = await rotateToken(env, projectId);
       if (!fresh) throw new ValidationError('project no longer exists');
       return {
         ok: true,
         projectId,
+        buildId: fresh,
         editToken: fresh,
         mcpUrl: publicUrls(origin, projectId).mcpUrl,
         note: 'GIVE THIS TOKEN TO THE HUMAN NOW. It is shown once and cannot be recovered. ' +
@@ -1449,7 +1453,10 @@ const PROJECT_ID_RE = /^[a-z0-9]{8,24}$/;
 /** Every tool takes these when the server is mounted once at /mcp for all projects. */
 const SHARED_ARGS = {
   projectId: { type: 'string', description: 'Which project to act on.' },
-  token: { type: 'string', description: 'That project’s edit token. Required for writes.' },
+  buildId: { type: 'string', description: 'That project’s build id. Required for writes. Prefer the Authorization header, which a client-side secret filter cannot eat.' },
+  // The old spelling. Still accepted so a connector added before the rename keeps working;
+  // undocumented on purpose, because two names for one value is how agents get confused.
+  token: { type: 'string', description: 'Deprecated alias for buildId.' },
 };
 
 /** create_project is the one tool with no project yet, so it never takes those two. */
@@ -1475,9 +1482,9 @@ const URLS = {
 
 const OUTPUT_SCHEMAS: Record<string, unknown> = {
   read_manual: OBJ({ manual: STR }, ['manual']),
-  create_project: OBJ({ projectId: STR, editToken: STR, note: STR, ...URLS,
+  create_project: OBJ({ projectId: STR, buildId: STR, note: STR, ...URLS,
     cluster: OBJ({ connected: BOOL, connectUrl: STR, tellTheHuman: STR },
-    ['connected', 'connectUrl']) }, ['projectId', 'editToken']),
+    ['connected', 'connectUrl']) }, ['projectId', 'buildId']),
   get_site: OBJ({ projectId: STR, config: ANY_OBJ, resolvedTheme: ANY_OBJ, tsVars: ANY_OBJ,
     pages: { type: 'array', items: STR } }, ['projectId', 'config', 'pages']),
   set_site: OBJ({ ok: BOOL, config: ANY_OBJ }, ['ok', 'config']),
@@ -1492,8 +1499,8 @@ const OUTPUT_SCHEMAS: Record<string, unknown> = {
   get_page: OBJ({ path: STR, page: ANY_OBJ }, ['path', 'page']),
   set_page: OBJ({ ok: BOOL, path: STR }, ['ok', 'path']),
   delete_page: OBJ({ ok: BOOL, path: STR }, ['ok', 'path']),
-  rotate_token: OBJ({ ok: BOOL, projectId: STR, editToken: STR, mcpUrl: STR, note: STR },
-    ['ok', 'projectId', 'editToken']),
+  rotate_build_id: OBJ({ ok: BOOL, projectId: STR, buildId: STR, mcpUrl: STR, note: STR },
+    ['ok', 'projectId', 'buildId']),
   get_code: OBJ({ path: STR, part: STR, code: STR }, ['path']),
   get_urls: OBJ({ projectId: STR, ...URLS,
     cluster: OBJ({ connected: BOOL, connectUrl: STR, tellTheHuman: STR },
@@ -1501,8 +1508,8 @@ const OUTPUT_SCHEMAS: Record<string, unknown> = {
   get_graph: OBJ({ nodes: { type: 'array', items: ANY_OBJ },
     edges: { type: 'array', items: ANY_OBJ },
     danglingLinks: { type: 'array', items: ANY_OBJ } }, ['nodes', 'edges', 'danglingLinks']),
-  fork_site: OBJ({ ok: BOOL, projectId: STR, editToken: STR, forkedFrom: STR,
-    copiedPages: NUM, note: STR }, ['ok', 'projectId', 'editToken']),
+  fork_site: OBJ({ ok: BOOL, projectId: STR, buildId: STR, forkedFrom: STR,
+    copiedPages: NUM, note: STR }, ['ok', 'projectId', 'buildId']),
   lock_project: OBJ({ ok: BOOL, lock: ANY_OBJ, note: STR }, ['ok']),
   unlock_project: OBJ({ ok: BOOL, locked: BOOL }, ['ok', 'locked']),
   search_metadata: OBJ({ source: { type: 'string', enum: ['cluster', 'catalog'] }, count: NUM,
@@ -1624,8 +1631,9 @@ export async function handleMcp(
           await putPage(env, project.id, '/', STARTER_PAGE);
           responses.push(textResult(id, {
             projectId: project.id,
+            buildId: fresh,
             editToken: fresh,
-            note: 'The edit token is shown once. Pass it as `token` on every later call, ' +
+            note: 'The build id is shown once. Pass it as `token` on every later call, ' +
               'and give it to the human — it cannot be recovered.',
             ...publicUrls(origin, project.id),
             connectUrl: connectLink(origin, project.id, fresh),
@@ -1641,7 +1649,7 @@ export async function handleMcp(
 
       let pid = projectId;
       // The token this call already authenticated with, so connect links come back ready
-      // to send instead of carrying a <editToken> placeholder.
+      // to send instead of carrying a <buildId> placeholder.
       let callToken: string | null = projectId ? headerToken : null;
       if (!pid) {
         pid = String(args.projectId ?? '');
@@ -1649,7 +1657,7 @@ export async function handleMcp(
           responses.push(toolError(id, 'projectId is required — pass the project you want to act on'));
           continue;
         }
-        const tok = String(args.token ?? headerToken ?? '');
+        const tok = String(args.buildId ?? args.token ?? headerToken ?? '');
         if (!tok || !(await verifyToken(env, pid, tok))) {
           responses.push(toolError(id, `invalid or missing token for project ${pid}`));
           continue;

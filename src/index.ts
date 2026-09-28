@@ -143,9 +143,10 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
     return json(
       {
         projectId: project.id,
+        buildId: token,
         editToken: token,
         ...publicUrls(url.origin, project.id),
-        note: 'Save editToken now — it is not stored in recoverable form and cannot be shown again.',
+        note: 'Save buildId now — it is not stored in recoverable form and cannot be shown again.',
       },
       201,
     );
@@ -276,7 +277,7 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
     const cred = await getConnectionSecret(env, projectId);
     if (!cred) {
       return json({
-        error: `no cluster connection stored — open /build/${projectId}#connect=1 (edit token in the #t= fragment) and save one`,
+        error: `no cluster connection stored — open /build/${projectId}#connect=1 (build id in the #t= fragment) and save one`,
       }, 409, cors);
     }
     const hints = project.config.auth as Record<string, any> | undefined;
@@ -568,11 +569,12 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
     return json(
       {
         projectId: forked.project.id,
+        buildId: forked.token,
         editToken: forked.token,
         forkedFrom: projectId,
         copiedPages: forked.copiedPages,
         ...publicUrls(url.origin, forked.project.id),
-        note: 'Save editToken now — it is not stored in recoverable form and cannot be shown again.',
+        note: 'Save buildId now — it is not stored in recoverable form and cannot be shown again.',
       },
       201,
     );
@@ -586,7 +588,7 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
     return json({ ok: true });
   }
 
-  // /api/projects/:id/rotate-token — issue a new edit token, invalidating the old one
+  // /api/projects/:id/rotate-token — issue a new build id, invalidating the old one
   // everywhere it was pasted. Needs the CURRENT token, so only a holder can rotate.
   if (segments.length === 4 && segments[3] === 'rotate-token') {
     if (request.method !== 'POST') return json({ error: 'method not allowed' }, 405);
@@ -596,6 +598,7 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
     if (!fresh) return json({ error: 'project not found' }, 404);
     return json({
       ok: true,
+      buildId: fresh,
       editToken: fresh,
       note: 'The old token stopped working. Anywhere it was pasted needs the new one: other ' +
         'browsers, MCP connectors, and any /build link still carrying it in its fragment.',
@@ -810,7 +813,7 @@ border-radius:var(--r);padding:15px;overflow-x:auto;font:400 12px/1.6 var(--mono
     </details>
     <button id="createBtn" class="primary">Create project</button>
     <p class="err" id="err" hidden></p>
-    <p class="fine">Free · the edit token is copied to your clipboard on the way in.</p>
+    <p class="fine">Free · the build id is copied to your clipboard on the way in.</p>
   </section>
 
   <section id="mineCard" hidden>
@@ -843,7 +846,7 @@ border-radius:var(--r);padding:15px;overflow-x:auto;font:400 12px/1.6 var(--mono
           <p class="howline"><span class="hn">2</span><span>Paste the URL below, including the
           <code class="inline">/mcp</code> path. Authentication: <b>No authentication</b>.</span></p>
           <p>Once you have a project, add it again as <code class="inline">/mcp/&lt;projectId&gt;</code>
-          with the edit token as the API key. The token then rides in the header instead of in
+          with the build id as the API key. It then rides in the header instead of in
           the tool arguments, which is what stops ChatGPT's secret filter blocking the call.</p>
           <p>Developer mode has to be on first. On a Business or Enterprise workspace an admin
           turns it on under Permissions &amp; Roles.
@@ -900,14 +903,14 @@ border-radius:var(--r);padding:15px;overflow-x:auto;font:400 12px/1.6 var(--mono
         if (!res.ok) { fail(res.j && res.j.error ? res.j.error : 'Could not create the project.'); return; }
         var d = res.j;
         try {
-          localStorage.setItem('sb.tok.' + d.projectId, d.editToken);
+          localStorage.setItem('sb.tok.' + d.projectId, d.buildId);
           var typed = ($('name').value || '').trim();
           if (typed) localStorage.setItem('sb.name.' + d.projectId, typed);
         } catch (e) { /* private mode: the clipboard copy is the only surviving copy */ }
         // The token rides in the fragment, which never reaches the server; the builder
         // reads it and strips it from the address bar.
-        var open = function(){ location.replace('/build/' + d.projectId + '#t=' + encodeURIComponent(d.editToken)); };
-        try { navigator.clipboard.writeText(d.editToken).then(open, open); } catch (e2) { open(); }
+        var open = function(){ location.replace('/build/' + d.projectId + '#t=' + encodeURIComponent(d.buildId)); };
+        try { navigator.clipboard.writeText(d.buildId).then(open, open); } catch (e2) { open(); }
       })
       .catch(function(){ fail('Network error. Please try again.'); });
   });

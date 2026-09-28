@@ -147,7 +147,7 @@ border:1px solid var(--sb-border);background:var(--sb-surface);color:var(--sb-te
 .sb-code-fork{font-size:13px;padding:4px 11px;border-radius:7px;border:1px solid var(--sb-primary);
 color:var(--sb-primary);text-decoration:none}
 .sb-code-fork:hover{background:var(--sb-primary);color:var(--sb-primary-text);text-decoration:none}
-/* "Edit this" only shows to someone holding the edit token, and for them it is the
+/* "Edit this" only shows to someone holding the build id, and for them it is the
    likelier action of the two, so it is the filled one and Fork & edit stays outlined. */
 .sb-code-edit{background:var(--sb-primary);color:var(--sb-primary-text)}
 .sb-code-edit:hover{opacity:.88}
