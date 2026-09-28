@@ -323,6 +323,7 @@ export function PromptDialog(props: {
 
 export function ConfirmDialog(props: {
   title: string;
+  body?: string;
   confirmLabel: string;
   onConfirm: () => void;
   onClose: () => void;
@@ -330,6 +331,7 @@ export function ConfirmDialog(props: {
   return (
     <Modal onClose={props.onClose}>
       <h3>{props.title}</h3>
+      {props.body && <p className="dlg-note">{props.body}</p>}
       <div className="dlg-row">
         <button onClick={props.onClose} autoFocus>Cancel</button>
         <button className="danger" onClick={props.onConfirm}>{props.confirmLabel}</button>

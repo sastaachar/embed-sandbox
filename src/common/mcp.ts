@@ -18,6 +18,7 @@ import {
   verifyToken,
   type Env,
   getConnectionSecret,
+  rotateToken,
 } from './db';
 import { STARTER_PAGE } from './schema';
 import type { PageConfig, ProjectConfig } from './schema';
@@ -849,6 +850,19 @@ const TOOLS = [
     },
   },
   {
+    name: 'rotate_token',
+    description:
+      "Issue a new edit token for this project and stop the old one working. Use when a token has been pasted somewhere it should not have been, or when someone who had it should no longer. Requires the current token, so only a holder can rotate. Everything holding the old one breaks at once: other browsers, MCP connectors it was added to, and any /build link still carrying it in its fragment. Returns the new token ONCE, unrecoverable like the first: give it to the human before you do anything else. Takes confirm: true, so it cannot happen by accident.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        confirm: { type: 'boolean', description: 'Must be true. Guards against an accidental rotation.' },
+      },
+      required: ['confirm'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'delete_page',
     description: 'Delete the page at a path. Deleting "/" leaves the site with no landing page.',
     inputSchema: {
@@ -1403,6 +1417,23 @@ async function callTool(
         }),
       };
     }
+    case 'rotate_token': {
+      if (args.confirm !== true) {
+        throw new ValidationError('rotate_token needs confirm: true — it breaks every existing copy of the token');
+      }
+      const fresh = await rotateToken(env, projectId);
+      if (!fresh) throw new ValidationError('project no longer exists');
+      return {
+        ok: true,
+        projectId,
+        editToken: fresh,
+        mcpUrl: publicUrls(origin, projectId).mcpUrl,
+        note: 'GIVE THIS TOKEN TO THE HUMAN NOW. It is shown once and cannot be recovered. ' +
+          'The old one stopped working everywhere it was pasted, including your own ' +
+          'connector if it was added with it — expect your next call to fail until they ' +
+          'update it with the value above.',
+      };
+    }
     case 'delete_page': {
       const path = normalizePath(String(args.path ?? ''));
       const removed = await deletePage(env, projectId, path);
@@ -1461,6 +1492,8 @@ const OUTPUT_SCHEMAS: Record<string, unknown> = {
   get_page: OBJ({ path: STR, page: ANY_OBJ }, ['path', 'page']),
   set_page: OBJ({ ok: BOOL, path: STR }, ['ok', 'path']),
   delete_page: OBJ({ ok: BOOL, path: STR }, ['ok', 'path']),
+  rotate_token: OBJ({ ok: BOOL, projectId: STR, editToken: STR, mcpUrl: STR, note: STR },
+    ['ok', 'projectId', 'editToken']),
   get_code: OBJ({ path: STR, part: STR, code: STR }, ['path']),
   get_urls: OBJ({ projectId: STR, ...URLS,
     cluster: OBJ({ connected: BOOL, connectUrl: STR, tellTheHuman: STR },

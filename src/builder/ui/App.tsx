@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { Block, Doc, EmbedType, Loc } from './types';
 import { blockAt, deepClone, indexAt, listAt, listFromKey, listKey, locOf, setEmbedType } from './blocks';
-import { getToken, loadDoc, PID, projectVersion, saveConnection, saveDoc, setToken, verifyToken, type EditLock } from './api';
+import { getToken, loadDoc, PID, projectVersion, rotateToken, saveConnection, saveDoc, setToken, verifyToken, type EditLock } from './api';
 import { clearCluster, clusterUsername } from './cluster';
 import { useBuilder } from './store';
 import { Canvas, wireResize } from './Canvas';
@@ -82,6 +82,7 @@ type Dialog =
   | { kind: 'metadata'; metadataType: string; onPick: (id: string) => void }
   | { kind: 'connect' }
   | { kind: 'buildAi' }
+  | { kind: 'rotate' }
   | { kind: 'newPage' }
   | { kind: 'delPage' }
   | { kind: 'newModal' }
@@ -465,6 +466,13 @@ export function App() {
           Copy token
         </button>
         <button
+          id="rotate"
+          title="Issue a new edit token and stop the old one working everywhere"
+          onClick={() => setDialog({ kind: 'rotate' })}
+        >
+          Rotate token
+        </button>
+        <button
           id="forget"
           title="Remove this project's edit token from this browser"
           onClick={() => {
@@ -672,6 +680,33 @@ export function App() {
             } else {
               setStatus(loggedIn ? 'connected — Pick… lists real objects' : 'saved (not logged in)',
                 loggedIn ? 'ok' : '');
+            }
+          }}
+        />
+      )}
+      {dialog?.kind === 'rotate' && (
+        <ConfirmDialog
+          title="Rotate the edit token?"
+          body={
+            'A new token replaces this one immediately. Every existing copy stops working: '
+            + 'other browsers, any MCP connector it was added to, and any /build link still '
+            + 'carrying it. The new one is copied to your clipboard and kept in this browser.'
+          }
+          confirmLabel="Rotate it"
+          onClose={() => setDialog(null)}
+          onConfirm={async () => {
+            setDialog(null);
+            try {
+              const fresh = await rotateToken();
+              try { localStorage.setItem(REMEMBER_KEY, fresh); } catch { /* private mode */ }
+              try {
+                await navigator.clipboard.writeText(fresh);
+                setStatus('token rotated and copied — update anywhere the old one was pasted', 'ok');
+              } catch {
+                setStatus('token rotated — Copy token puts the new one on your clipboard', 'ok');
+              }
+            } catch (err) {
+              setStatus((err as Error).message, 'err');
             }
           }}
         />

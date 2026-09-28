@@ -14,6 +14,7 @@ import {
   setLock,
   setProjectConfig,
   updateProjectConfig,
+  rotateToken,
   verifyToken,
   type Env,
 } from './common/db';
@@ -583,6 +584,22 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
     const denied = await requireToken(request, env, projectId);
     if (denied) return denied;
     return json({ ok: true });
+  }
+
+  // /api/projects/:id/rotate-token — issue a new edit token, invalidating the old one
+  // everywhere it was pasted. Needs the CURRENT token, so only a holder can rotate.
+  if (segments.length === 4 && segments[3] === 'rotate-token') {
+    if (request.method !== 'POST') return json({ error: 'method not allowed' }, 405);
+    const denied = await requireToken(request, env, projectId);
+    if (denied) return denied;
+    const fresh = await rotateToken(env, projectId);
+    if (!fresh) return json({ error: 'project not found' }, 404);
+    return json({
+      ok: true,
+      editToken: fresh,
+      note: 'The old token stopped working. Anywhere it was pasted needs the new one: other ' +
+        'browsers, MCP connectors, and any /build link still carrying it in its fragment.',
+    });
   }
 
   // /api/projects/:id/pages

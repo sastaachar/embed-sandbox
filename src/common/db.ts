@@ -275,6 +275,20 @@ export async function deleteProject(
   };
 }
 
+/**
+ * Issue a new edit token and forget the old one. Every holder of the old token loses access
+ * at once: other browsers, any MCP connector it was pasted into, a link that still carries
+ * it in its fragment. That is the point of rotating, so the caller has to say so.
+ */
+export async function rotateToken(env: Env, id: string): Promise<string | null> {
+  const token = newToken();
+  const res = await env.DB.prepare('UPDATE projects SET token_hash = ? WHERE id = ?')
+    .bind(await hashToken(token), id)
+    .run();
+  const changed = (res.meta as { changes?: number } | undefined)?.changes ?? 0;
+  return changed > 0 ? token : null;
+}
+
 export async function verifyToken(env: Env, id: string, token: string): Promise<boolean> {
   const row = await env.DB.prepare('SELECT token_hash FROM projects WHERE id = ?')
     .bind(id)

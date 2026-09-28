@@ -5,7 +5,7 @@
  *
  * Bumped when the bundle changes so a stale copy is never served from cache.
  */
-export const BUILDER_VERSION = '38';
+export const BUILDER_VERSION = '39';
 
 import { MARKDOWN_SRC } from '../live/shell';
 
