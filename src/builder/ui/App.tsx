@@ -609,6 +609,11 @@ export function App() {
           defaultSdkVersion={String(d.config.sdkVersion || '')}
           onCredentialChange={() => setConnectEpoch((n) => n + 1)}
           onClose={() => setDialog(null)}
+          onSync={async (items) => {
+            d.config.catalog = { items, syncedAt: Date.now() };
+            await save();
+            render();
+          }}
           onSave={async (host, hostChanged, loggedIn, authType, publishCredential, sdkVersion, serverCredential) => {
             if (host === null) clearCluster();
             // Connecting or disconnecting changes what init() should be built from.

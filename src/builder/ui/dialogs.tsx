@@ -105,6 +105,8 @@ export function MetadataPicker(props: {
   );
 }
 
+const CATALOG_TYPES = ['LIVEBOARD', 'ANSWER', 'LOGICAL_TABLE'];
+
 export function ConnectDialog(props: {
   defaultHost: string;
   defaultAuthType: string;
@@ -113,6 +115,7 @@ export function ConnectDialog(props: {
   /** Only the host reaches the backend — the credential never leaves this tab. */
   publishedCredential: boolean;
   defaultSdkVersion: string;
+  onSync: (items: Array<{ id: string; name: string; type: string }>) => Promise<void>;
   onSave: (
     host: string | null,
     hostChanged: boolean,
@@ -167,8 +170,28 @@ export function ConnectDialog(props: {
         : null, sdkVersion.trim(),
         username && effectiveSecret ? { username, secret: effectiveSecret, secretType } : null);
       if (loggedIn) {
-        setMsg({ text: `Connected as ${username}.`, kind: 'dlg-ok' });
-        setTimeout(props.onClose, 700);
+        // The login just proved this tab can read the cluster, which is the only thing the
+        // catalog sync needs. Doing it here means search_metadata works straight after
+        // connecting, instead of returning nothing until someone finds the Sync button in
+        // another dialog. Best effort: a failed sync must not undo a good connection.
+        setMsg({ text: `Connected as ${username}. Reading the catalog…`, kind: 'dlg-note' });
+        let cached = 0;
+        try {
+          const found: Array<{ id: string; name: string; type: string }> = [];
+          for (const type of CATALOG_TYPES) {
+            const rows = await clusterSearch(type, '');
+            rows.forEach((r) => found.push({ id: r.id, name: r.name, type }));
+          }
+          await props.onSync(found);
+          cached = found.length;
+        } catch { /* the connection stands; Sync from cluster can be retried by hand */ }
+        setMsg({
+          text: cached
+            ? `Connected as ${username}. Cached ${cached} objects.`
+            : `Connected as ${username}.`,
+          kind: 'dlg-ok',
+        });
+        setTimeout(props.onClose, cached ? 1100 : 700);
       }
     } catch (err) {
       setMsg({ text: (err as Error).message, kind: 'dlg-err' });
@@ -320,7 +343,6 @@ const SDK_VERSIONS = [
   'latest', '1.51.0', '1.50.0', '1.49.1', '1.48.0', '1.45.0', '1.41.0', '1.36.3',
 ];
 
-const CATALOG_TYPES = ['LIVEBOARD', 'ANSWER', 'LOGICAL_TABLE'];
 
 /**
  * Everything an agent needs to take over this project, in one place: where to point its
