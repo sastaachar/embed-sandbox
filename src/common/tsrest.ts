@@ -39,12 +39,25 @@ function base(host: string): string {
 async function read(res: Response, what: string): Promise<unknown> {
   if (res.ok) return res.json();
   const detail = await res.text().catch(() => '');
+  // A 401 really is the credential. A 403 on a mint is usually something else, and the old
+  // message sent people to re-check a password that was already right.
   const hint =
-    res.status === 401 || res.status === 403
-      ? ' — check the username and password/secret key'
-      : res.status === 404
-        ? ' — check the host'
-        : '';
+    res.status === 401
+      ? ' — the cluster rejected this username/secret outright'
+      : res.status === 403 && what === 'Login'
+        ? ' — the cluster answered and refused to mint. Retrying will not help. Causes, ' +
+          'roughly in order: this is not that user\'s password; trusted authentication is ' +
+          'off on the cluster (Develop > Customizations > Security Settings), so no secret ' +
+          'key works; the user is not allowed to mint tokens; or secretType is the wrong ' +
+          'one, a secret_key sent as a password or the reverse. Check by making the same ' +
+          'call yourself: POST <host>/api/rest/2.0/auth/token/full with ' +
+          '{username, password, validity_time_in_sec}. If that fails from your own machine ' +
+          'too, the cluster is the problem, not this server'
+        : res.status === 403
+          ? ' — the cluster refused this request'
+          : res.status === 404
+            ? ' — check the host'
+            : '';
   const nice = tokenApiMessage(detail);
   throw new TsRestError(
     `${what} failed (${res.status})${hint}${nice ? `: ${nice}` : detail ? `: ${detail.slice(0, 200)}` : ''}`,

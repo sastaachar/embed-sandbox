@@ -1075,9 +1075,14 @@ function connectionHelp(origin: string, projectId: string, editToken?: string | 
         'certificate. Same as VPN-only; a plain HTTP port on the same cluster does work ' +
         'from here.',
       reachableButRefusing:
-        'clusterReached: true with 401 or 403. The network is fine, the credentials are ' +
-        'not. Name the username that was tried and send the link so they re-enter it. Do ' +
-        'not change auth types to get around it.',
+        'clusterReached: true with 401 or 403. The network is fine. A 401 is the username ' +
+        'or secret. A 403 on the mint is usually NOT the password, so do not just tell ' +
+        'them to re-enter it: trusted authentication may be off on the cluster (Develop > ' +
+        'Customizations > Security Settings), the user may not be allowed to mint tokens, ' +
+        'or secretType may be wrong (a secret_key saved as a password or the reverse). Name ' +
+        'the username and host that were tried, quote the error, and suggest they make the ' +
+        'same call themselves against /api/rest/2.0/auth/token/full to see whether it fails ' +
+        'from their machine too. Do not change auth types to get around it.',
     },
     note: 'Username + password are required for search_metadata and any cluster-backed ' +
       'feature. For auth types other than TrustedAuthTokenCookieless/TrustedAuthToken the ' +
