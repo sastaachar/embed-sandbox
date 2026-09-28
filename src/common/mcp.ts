@@ -247,6 +247,22 @@ required for every write; reads are public because sharing is the point.
 Small edits: get_page / set_page (replace, not merge). Whole-document edits:
 get_config / save_config. set_site merges config; save_config and set_page replace.
 
+## Not sure about the SDK? Ask spotter-code, do not guess
+
+This server knows its own document format. It does NOT know the whole Visual Embed SDK, and a
+guessed viewConfig key, EmbedEvent name or HostEvent name produces a demo that silently does
+nothing: the page renders, the handler never fires, and nobody notices until a customer does.
+
+ThoughtSpot runs a second MCP server for exactly this:
+
+    https://spottercode.thoughtspot.app/mcp
+
+Add it alongside this one and ask it whenever you are unsure: SDK APIs and their options,
+event and action names, auth types, REST endpoints, version differences. Call its own
+tools/list first rather than assuming what it offers. Prefer its answer to your training data,
+which is older than the SDK you are pinning. If the human has not added it, say that is where
+the answer lives rather than guessing and hoping.
+
 ## When to call what
 
 | Situation | Call |
@@ -257,6 +273,8 @@ get_config / save_config. set_site merges config; save_config and set_page repla
 | tweaking one page | get_page → set_page (replaces the whole page) |
 | site-wide restyle / rename / SDK pin | set_site (merges, so send only what changes) |
 | you need a liveboard/answer/worksheet id | search_metadata — NEVER guess ids |
+| unsure of an SDK API, event, action or auth type | ask the spotter-code MCP (https://spottercode.thoughtspot.app/mcp). Guessing here fails silently |
+| handing the links over | get_urls, and read its cluster field: if it is present, no cluster is connected and every embed renders empty. Send cluster.connectUrl |
 | about to make the first edit of a session | lock_project — the builder warns the human |
 | done editing | unlock_project — the banner clears immediately |
 | explaining the config to the human | get_code (real SDK code) or get_urls (links) |
@@ -946,6 +964,7 @@ function connectionStatus(
   connection: { host: string; username: string; hasSecret: boolean } | null,
   origin: string,
   projectId: string,
+  editToken?: string | null,
 ) {
   const auth = cfg.auth;
   const host = connection?.host || cfg.thoughtSpotHost || null;
@@ -960,7 +979,11 @@ function connectionStatus(
     username: connection?.username || auth?.username || null,
     credentialStoredServerSide: hasServerSecret,
     credentialShippedInPage: hasPublicSecret,
-    connectUrl: publicUrls(origin, projectId).connectUrl,
+    // With the caller's own token spliced in, so it can be sent as-is. Without a token
+    // (a public read) it is the tokenless form, which prompts for one.
+    connectUrl: editToken
+      ? connectLink(origin, projectId, editToken)
+      : publicUrls(origin, projectId).connectUrl,
   };
 }
 
@@ -1055,6 +1078,29 @@ function connectionHelp(origin: string, projectId: string, editToken?: string | 
       'connect link keeps them server-side (not shipped to visitors). For token auth ' +
       'types it also sets auth.tokenSource "proxy": the published site fetches tokens ' +
       "from this site's /token endpoint and never downloads the credential.",
+  };
+}
+
+/**
+ * A project with no cluster renders empty frames, and the agent that built it is the one
+ * who has to say so. This rides on create_project, get_urls and save_config, because those
+ * are the calls made at hand-over time. It used to live only on search_metadata, and an
+ * agent that never needed an id therefore never saw it: ChatGPT built project yxiqu9yr43bi,
+ * handed over both links, and told the user to "configure a cluster" with no link at all.
+ */
+function clusterNotice(origin: string, projectId: string, editToken: string | null, connected: boolean) {
+  if (connected) return undefined;
+  return {
+    connected: false,
+    connectUrl: editToken
+      ? connectLink(origin, projectId, editToken)
+      : publicUrls(origin, projectId).connectUrl,
+    tellTheHuman:
+      'No cluster is connected, so every embed on this site renders empty. Do not hand the ' +
+      'links over without saying so, and do not just ask them to "configure a cluster": give ' +
+      'them connectUrl, which opens the builder with the Connect dialog already up. They can ' +
+      'also give you the cluster address, username and password here and you save them with ' +
+      'set_site. Offer both and let them pick.',
   };
 }
 
@@ -1177,7 +1223,7 @@ async function callTool(
         // A non-secret readout of the cluster connection, so you can tell whether a human
         // has filled it in (on the site or via you) and pull what they entered. When
         // `connected` is false, ask them to connect — see connectionHelp.
-        connection: connectionStatus(project.config, project.connection, origin, projectId),
+        connection: connectionStatus(project.config, project.connection, origin, projectId, editToken),
         updatedAt: project.updatedAt,
       };
     }
@@ -1206,14 +1252,26 @@ async function callTool(
       await refreshLock(env, projectId);
       const saved = await getProject(env, projectId);
       const pages = await listPages(env, projectId);
+      const saveStatus = saved
+        ? connectionStatus(saved.config, saved.connection, origin, projectId, editToken)
+        : null;
       return {
         ok: true,
         config: saved?.config,
         pages: Object.fromEntries(pages.map((p) => [p.path, p.config])),
+        cluster: clusterNotice(origin, projectId, editToken, !!saveStatus?.connected),
       };
     }
     case 'get_urls': {
-      return { projectId, ...publicUrls(origin, projectId) };
+      const project = await getProject(env, projectId);
+      const status = project
+        ? connectionStatus(project.config, project.connection, origin, projectId, editToken)
+        : null;
+      return {
+        projectId,
+        ...publicUrls(origin, projectId),
+        cluster: clusterNotice(origin, projectId, editToken, !!status?.connected),
+      };
     }
     case 'get_graph': {
       const project = await getProject(env, projectId);
@@ -1341,22 +1399,27 @@ const URLS = {
 
 const OUTPUT_SCHEMAS: Record<string, unknown> = {
   read_manual: OBJ({ manual: STR }, ['manual']),
-  create_project: OBJ({ projectId: STR, editToken: STR, note: STR, ...URLS },
-    ['projectId', 'editToken']),
+  create_project: OBJ({ projectId: STR, editToken: STR, note: STR, ...URLS,
+    cluster: OBJ({ connected: BOOL, connectUrl: STR, tellTheHuman: STR },
+    ['connected', 'connectUrl']) }, ['projectId', 'editToken']),
   get_site: OBJ({ projectId: STR, config: ANY_OBJ, resolvedTheme: ANY_OBJ, tsVars: ANY_OBJ,
     pages: { type: 'array', items: STR } }, ['projectId', 'config', 'pages']),
   set_site: OBJ({ ok: BOOL, config: ANY_OBJ }, ['ok', 'config']),
   get_config: OBJ({ projectId: STR, config: ANY_OBJ, pages: ANY_OBJ, connection: ANY_OBJ,
     updatedAt: { type: 'number', description: 'Epoch milliseconds.' } },
     ['projectId', 'config', 'pages', 'connection']),
-  save_config: OBJ({ ok: BOOL, config: ANY_OBJ, pages: ANY_OBJ }, ['ok']),
+  save_config: OBJ({ ok: BOOL, config: ANY_OBJ, pages: ANY_OBJ,
+    cluster: OBJ({ connected: BOOL, connectUrl: STR, tellTheHuman: STR },
+    ['connected', 'connectUrl']) }, ['ok']),
   list_pages: OBJ({ pages: { type: 'array', items: OBJ({ path: STR, title: STR, blocks: NUM,
     embedType: STR, preRender: BOOL, fullHeight: BOOL }, ['path']) } }, ['pages']),
   get_page: OBJ({ path: STR, page: ANY_OBJ }, ['path', 'page']),
   set_page: OBJ({ ok: BOOL, path: STR }, ['ok', 'path']),
   delete_page: OBJ({ ok: BOOL, path: STR }, ['ok', 'path']),
   get_code: OBJ({ path: STR, part: STR, code: STR }, ['path']),
-  get_urls: OBJ({ projectId: STR, ...URLS }, ['projectId']),
+  get_urls: OBJ({ projectId: STR, ...URLS,
+    cluster: OBJ({ connected: BOOL, connectUrl: STR, tellTheHuman: STR },
+    ['connected', 'connectUrl']) }, ['projectId']),
   get_graph: OBJ({ nodes: { type: 'array', items: ANY_OBJ },
     edges: { type: 'array', items: ANY_OBJ },
     danglingLinks: { type: 'array', items: ANY_OBJ } }, ['nodes', 'edges', 'danglingLinks']),
@@ -1487,6 +1550,7 @@ export async function handleMcp(
             note: 'The edit token is shown once. Pass it as `token` on every later call, ' +
               'and give it to the human — it cannot be recovered.',
             ...publicUrls(origin, project.id),
+            cluster: clusterNotice(origin, project.id, fresh, false),
           }));
         } catch (err) {
           const msg = err instanceof ValidationError ? err.message : 'could not create the project';
