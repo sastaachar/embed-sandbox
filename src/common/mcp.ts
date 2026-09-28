@@ -837,7 +837,7 @@ function addTheServerFirst(origin: string): string {
     '',
     `- **Claude Code**: \`claude mcp add --transport http embed-sandbox ${url}\``,
     `- **Claude Desktop or claude.ai**: Settings, Connectors, Add custom connector, URL \`${url}\``,
-    `- **ChatGPT**: Settings, turn on Developer mode, then Apps & connectors, +, URL \`${url}\`, no authentication`,
+    `- **ChatGPT**: open the new-connector dialog at https://chatgpt.com/plugins#settings/Connectors?create-connector=true&redirectAfter=%2Fplugins , paste \`${url}\`, Authentication: No authentication. Developer mode must be on first; on a Business or Enterprise workspace an admin turns it on under Permissions & Roles.`,
     `- **Cursor, Windsurf, Zed and the rest**: add a streamable-HTTP MCP server with URL \`${url}\``,
     `- **Anything else**: streamable HTTP at \`${url}\`. Writes send \`Authorization: Bearer <edit token>\`; reads need no token.`,
     '',
@@ -907,9 +907,16 @@ function rpcError(id: RpcRequest['id'], code: number, message: string) {
   return { jsonrpc: '2.0', id, error: { code, message } };
 }
 
-function textResult(id: RpcRequest['id'], payload: unknown) {
+function textResult(id: RpcRequest['id'], payload: unknown, structured?: unknown) {
   const text = typeof payload === 'string' ? payload : JSON.stringify(payload, null, 2);
-  return result(id, { content: [{ type: 'text', text }] });
+  // A tool that declares an outputSchema has to answer with structuredContent too, and the
+  // text block stays for clients that never look at it.
+  const sc = structured !== undefined
+    ? structured
+    : (payload && typeof payload === 'object' ? payload : undefined);
+  return result(id, sc === undefined
+    ? { content: [{ type: 'text', text }] }
+    : { content: [{ type: 'text', text }], structuredContent: sc });
 }
 
 function toolError(id: RpcRequest['id'], message: string) {
@@ -1314,9 +1321,60 @@ const SHARED_ARGS = {
 /** create_project is the one tool with no project yet, so it never takes those two. */
 const NO_PROJECT = new Set(['read_manual', 'create_project']);
 
+/**
+ * Declared per tool so a client can type the result instead of parsing prose; several warn
+ * ("output schema recommended") without one. Every schema is `additionalProperties: true`
+ * on purpose: failure paths bolt extra keys on (connectionHelp, note, clusterError) and a
+ * closed schema would make an honest answer invalid. `required` lists only keys that are
+ * present on every return of that tool.
+ */
+const OBJ = (properties: Record<string, unknown>, required: string[] = []) => ({
+  type: 'object' as const, properties, required, additionalProperties: true,
+});
+const STR = { type: 'string' } as const;
+const BOOL = { type: 'boolean' } as const;
+const NUM = { type: 'number' } as const;
+const ANY_OBJ = { type: 'object', additionalProperties: true } as const;
+const URLS = {
+  siteUrl: STR, builderUrl: STR, connectUrl: STR, forkUrl: STR, mcpUrl: STR, apiUrl: STR,
+};
+
+const OUTPUT_SCHEMAS: Record<string, unknown> = {
+  read_manual: OBJ({ manual: STR }, ['manual']),
+  create_project: OBJ({ projectId: STR, editToken: STR, note: STR, ...URLS },
+    ['projectId', 'editToken']),
+  get_site: OBJ({ projectId: STR, config: ANY_OBJ, resolvedTheme: ANY_OBJ, tsVars: ANY_OBJ,
+    pages: { type: 'array', items: STR } }, ['projectId', 'config', 'pages']),
+  set_site: OBJ({ ok: BOOL, config: ANY_OBJ }, ['ok', 'config']),
+  get_config: OBJ({ projectId: STR, config: ANY_OBJ, pages: ANY_OBJ, connection: ANY_OBJ,
+    updatedAt: { type: 'number', description: 'Epoch milliseconds.' } },
+    ['projectId', 'config', 'pages', 'connection']),
+  save_config: OBJ({ ok: BOOL, config: ANY_OBJ, pages: ANY_OBJ }, ['ok']),
+  list_pages: OBJ({ pages: { type: 'array', items: OBJ({ path: STR, title: STR, blocks: NUM,
+    embedType: STR, preRender: BOOL, fullHeight: BOOL }, ['path']) } }, ['pages']),
+  get_page: OBJ({ path: STR, page: ANY_OBJ }, ['path', 'page']),
+  set_page: OBJ({ ok: BOOL, path: STR }, ['ok', 'path']),
+  delete_page: OBJ({ ok: BOOL, path: STR }, ['ok', 'path']),
+  get_code: OBJ({ path: STR, part: STR, code: STR }, ['path']),
+  get_urls: OBJ({ projectId: STR, ...URLS }, ['projectId']),
+  get_graph: OBJ({ nodes: { type: 'array', items: ANY_OBJ },
+    edges: { type: 'array', items: ANY_OBJ },
+    danglingLinks: { type: 'array', items: ANY_OBJ } }, ['nodes', 'edges', 'danglingLinks']),
+  fork_site: OBJ({ ok: BOOL, projectId: STR, editToken: STR, forkedFrom: STR,
+    copiedPages: NUM, note: STR }, ['ok', 'projectId', 'editToken']),
+  lock_project: OBJ({ ok: BOOL, lock: ANY_OBJ, note: STR }, ['ok']),
+  unlock_project: OBJ({ ok: BOOL, locked: BOOL }, ['ok', 'locked']),
+  search_metadata: OBJ({ source: { type: 'string', enum: ['cluster', 'catalog'] }, count: NUM,
+    items: { type: 'array', items: ANY_OBJ }, clusterReached: BOOL, clusterError: STR,
+    syncedAt: STR, note: STR, connectionHelp: ANY_OBJ }, ['source', 'count', 'items']),
+};
+
 function toolsFor(pinned: string | null) {
-  if (pinned) return TOOLS;
-  return TOOLS.map((tool) => {
+  const withOutput = TOOLS.map((tool) => (
+    OUTPUT_SCHEMAS[tool.name] ? { ...tool, outputSchema: OUTPUT_SCHEMAS[tool.name] } : tool
+  ));
+  if (pinned) return withOutput;
+  return withOutput.map((tool) => {
     if (NO_PROJECT.has(tool.name)) return tool;
     return {
       ...tool,
@@ -1408,7 +1466,8 @@ export async function handleMcp(
       const args = (message.params?.arguments as Record<string, unknown>) ?? {};
       // The manual is public and project-free, like the GET that serves it.
       if (name === 'read_manual') {
-        responses.push(textResult(id, manualMarkdown()));
+        const manual = manualMarkdown();
+        responses.push(textResult(id, manual, { manual }));
         continue;
       }
       // Creating a project cannot name one, and there is nothing yet to authorise

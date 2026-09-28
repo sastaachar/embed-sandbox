@@ -821,14 +821,13 @@ border-radius:var(--r);padding:15px;overflow-x:auto;font:400 12px/1.6 var(--mono
           with the URL below.</p>
         </div>
         <div id="how-chatgpt" hidden>
-          <p class="howline"><span class="hn">1</span><span>Settings → turn on <b>Developer
-          mode</b>. On a Business or Enterprise workspace an admin enables it under
-          Permissions &amp; Roles.</span></p>
-          <p class="howline"><span class="hn">2</span><span><b>Apps &amp; connectors → +</b>,
-          then create an app.</span></p>
-          <p class="howline"><span class="hn">3</span><span>Paste the URL below, including the
-          <code class="inline">/mcp</code> path. No authentication.</span></p>
-          <p>The menu keeps moving. <a href="https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt"
+          <p class="howline"><span class="hn">1</span><span>Open ChatGPT's
+          <a href="https://chatgpt.com/plugins#settings/Connectors?create-connector=true&amp;redirectAfter=%2Fplugins" target="_blank" rel="noopener">new connector dialog</a>.</span></p>
+          <p class="howline"><span class="hn">2</span><span>Paste the URL below, including the
+          <code class="inline">/mcp</code> path. Authentication: <b>No authentication</b>.</span></p>
+          <p>Developer mode has to be on first. On a Business or Enterprise workspace an admin
+          turns it on under Permissions &amp; Roles.
+          <a href="https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt"
           target="_blank" rel="noopener">OpenAI's guide</a> is canonical.</p>
         </div>
         <p class="also">MCP server URL for any client:</p>
