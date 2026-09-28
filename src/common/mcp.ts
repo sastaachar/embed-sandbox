@@ -181,10 +181,23 @@ pages re-render within ~5s of any save, and the visual builder follows along too
 
 ## Connecting
 
-Added once at /mcp, this server works on every project: pass projectId and token with
-each tool call. Mounted at /mcp/<projectId>, both are implied (token in the
-Authorization header). Tokens are per project, shown once at create_project, and
-required for every write; reads are public because sharing is the point.
+Tokens are per project, shown once at create_project, and required for every write. Reads
+are public, because sharing is the point.
+
+There are two ways to carry the token, and one of them keeps working when the other does not:
+
+- **Authorization header, preferred.** Authorization: Bearer <editToken>. Works on both
+  mounts. At /mcp/<projectId> it is the only way and projectId is implied too.
+- **A token argument on each call.** Works at /mcp, and is the obvious thing to reach for,
+  but see below.
+
+IF YOUR CLIENT BLOCKS TOOL ARGUMENTS THAT LOOK LIKE SECRETS, USE THE HEADER. A 64-character
+hex edit token is exactly what a safety filter is built to catch, and ChatGPT's does: the call
+is blocked before it reaches this server, the next call goes out without the token, and you
+get "invalid or missing token" for a token you did send. If you see that once, stop retrying
+the argument. Tell the human to re-add the connector as /mcp/<projectId> with the edit token
+as the API key, so it rides in the header and never passes through your tool arguments at
+all. create_project needs no token, so it still works on the plain /mcp mount.
 
 ## The workflow that works
 
@@ -862,6 +875,11 @@ function addTheServerFirst(origin: string): string {
     `- **ChatGPT**: open the new-connector dialog at https://chatgpt.com/plugins#settings/Connectors?create-connector=true&redirectAfter=%2Fplugins , paste \`${url}\`, Authentication: No authentication. Developer mode must be on first; on a Business or Enterprise workspace an admin turns it on under Permissions & Roles.`,
     `- **Cursor, Windsurf, Zed and the rest**: add a streamable-HTTP MCP server with URL \`${url}\``,
     `- **Anything else**: streamable HTTP at \`${url}\`. Writes send \`Authorization: Bearer <edit token>\`; reads need no token.`,
+    '',
+    'Once a project exists, prefer adding it a second time as `' + url + '/<projectId>` with the',
+    'edit token as the API key. The token then travels in the Authorization header instead of',
+    'in your tool arguments, which is what stops a client-side secret filter from blocking the',
+    'call (ChatGPT blocks it otherwise).',
     '',
     '## Adding it is plumbing, not the task',
     '',

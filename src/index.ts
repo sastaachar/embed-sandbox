@@ -825,6 +825,9 @@ border-radius:var(--r);padding:15px;overflow-x:auto;font:400 12px/1.6 var(--mono
           <a href="https://chatgpt.com/plugins#settings/Connectors?create-connector=true&amp;redirectAfter=%2Fplugins" target="_blank" rel="noopener">new connector dialog</a>.</span></p>
           <p class="howline"><span class="hn">2</span><span>Paste the URL below, including the
           <code class="inline">/mcp</code> path. Authentication: <b>No authentication</b>.</span></p>
+          <p>Once you have a project, add it again as <code class="inline">/mcp/&lt;projectId&gt;</code>
+          with the edit token as the API key. The token then rides in the header instead of in
+          the tool arguments, which is what stops ChatGPT's secret filter blocking the call.</p>
           <p>Developer mode has to be on first. On a Business or Enterprise workspace an admin
           turns it on under Permissions &amp; Roles.
           <a href="https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt"
