@@ -195,9 +195,18 @@ IF YOUR CLIENT BLOCKS TOOL ARGUMENTS THAT LOOK LIKE SECRETS, USE THE HEADER. A 6
 hex edit token is exactly what a safety filter is built to catch, and ChatGPT's does: the call
 is blocked before it reaches this server, the next call goes out without the token, and you
 get "invalid or missing token" for a token you did send. If you see that once, stop retrying
-the argument. Tell the human to re-add the connector as /mcp/<projectId> with the edit token
-as the API key, so it rides in the header and never passes through your tool arguments at
-all. create_project needs no token, so it still works on the plain /mcp mount.
+the argument.
+
+Tokens are deliberately per project, so a leaked one exposes one demo rather than all of
+them. That means one connector per project, and the way to ask for it is exactly:
+
+  1. create_project on the plain /mcp mount, which needs no token.
+  2. Take mcpUrl and editToken out of its answer. mcpUrl IS the per-project mount,
+     /mcp/<projectId>. Do not invent a settings link or send them hunting for one.
+  3. Ask the human to add a connector with that URL, authentication "API key", and
+     editToken as the key. Quote both values so they can paste them.
+  4. Carry on through the new connector, where the token is implied and never appears in
+     an argument.
 
 ## The workflow that works
 
