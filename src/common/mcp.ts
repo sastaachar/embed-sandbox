@@ -1270,6 +1270,13 @@ async function callTool(
       return {
         projectId,
         ...publicUrls(origin, projectId),
+        // publicUrls has no token to give, so its connectUrl only prompts for one. Override
+        // it with the caller's own, or the agent grabs the tokenless field sitting next to
+        // the working one and hands over a link that asks the human for a token they do not
+        // have.
+        connectUrl: editToken
+          ? connectLink(origin, projectId, editToken)
+          : publicUrls(origin, projectId).connectUrl,
         cluster: clusterNotice(origin, projectId, editToken, !!status?.connected),
       };
     }
@@ -1550,6 +1557,7 @@ export async function handleMcp(
             note: 'The edit token is shown once. Pass it as `token` on every later call, ' +
               'and give it to the human — it cannot be recovered.',
             ...publicUrls(origin, project.id),
+            connectUrl: connectLink(origin, project.id, fresh),
             cluster: clusterNotice(origin, project.id, fresh, false),
           }));
         } catch (err) {
