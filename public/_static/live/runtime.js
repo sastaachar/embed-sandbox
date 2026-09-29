@@ -3601,6 +3601,14 @@
       resolveSdkVersion(M.project.sdkVersion || 'latest').then(function (real) {
         if (real && fields.sdk && sdkLab) sdkLab.appendChild(el('span', 'sb-set-src', ' \u00b7 now ' + real));
       });
+      // The version says which build was asked for. This is the file that actually loaded,
+      // so a suspect bundle can be opened and read rather than guessed at.
+      var sdkFile = el('a', 'sb-set-file', M.sdkUrl);
+      sdkFile.href = M.sdkUrl;
+      sdkFile.target = '_blank';
+      sdkFile.rel = 'noopener';
+      sdkFile.title = 'Open the SDK bundle this page loaded';
+      fields.sdk.parentNode.appendChild(sdkFile);
       var authWrap = el('div', 'sb-set-f');
       authWrap.appendChild(el('label', null, 'Auth type'));
       var sel = el('select');
