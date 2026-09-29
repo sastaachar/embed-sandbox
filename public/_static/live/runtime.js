@@ -3610,7 +3610,9 @@
         sdkFile.href = M.sdkUrl;
         sdkFile.target = '_blank';
         sdkFile.rel = 'noopener';
-        sdkFile.title = M.sdkUrl;
+        // Says "loaded", not "typed": the box above is what you are about to ask for,
+        // this is what the page is running. They disagree until Load, on purpose.
+        sdkFile.title = 'Loaded now: ' + M.sdkUrl + '\nChange the version above and press Load to switch.';
         sdkLab.appendChild(document.createTextNode(' \u00b7 ('));
         sdkLab.appendChild(sdkFile);
         sdkLab.appendChild(document.createTextNode(')'));

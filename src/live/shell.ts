@@ -3,7 +3,7 @@ import type { Theme } from '../common/schema';
 import { resolveTheme } from '../common/theme';
 import { SDK_CDN_ORIGIN, sdkUrl } from '../common/sdkUrl';
 
-export const RUNTIME_VERSION = '83';
+export const RUNTIME_VERSION = '84';
 
 /**
  * The Markdown renderer for text blocks, shared byte-for-byte with the builder canvas.
