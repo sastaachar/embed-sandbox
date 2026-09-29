@@ -3598,25 +3598,55 @@
         siteConn.thoughtSpotHost || 'https://your.thoughtspot.cloud');
       fields.sdk = field(body, 'SDK version', own.sdkVersion || '', siteSdkVersion);
       var sdkLab = fields.sdk.previousSibling;
-      resolveSdkVersion(M.project.sdkVersion || 'latest').then(function (real) {
-        if (real && fields.sdk && sdkLab) sdkLab.appendChild(el('span', 'sb-set-src', ' \u00b7 now ' + real));
-      });
-      // The version says which build was asked for. This is the file that actually loaded,
-      // so a suspect bundle can be opened and read rather than guessed at. It sits in the
-      // label, beside the resolved version, because the URL in full is too long to read and
-      // the thing you want is one click.
-      if (sdkLab && M.sdkUrl) {
-        var sdkFile = el('a', 'sb-set-file', 'view build');
-        sdkFile.href = M.sdkUrl;
-        sdkFile.target = '_blank';
-        sdkFile.rel = 'noopener';
-        // Says "loaded", not "typed": the box above is what you are about to ask for,
-        // this is what the page is running. They disagree until Load, on purpose.
-        sdkFile.title = 'Loaded now: ' + M.sdkUrl + '\nChange the version above and press Load to switch.';
-        sdkLab.appendChild(document.createTextNode(' \u00b7 ('));
-        sdkLab.appendChild(sdkFile);
-        sdkLab.appendChild(document.createTextNode(')'));
+      // Everything after "SDK version" is re-rendered as one unit, because the URL, the
+      // resolved version and the pending marker all change together when you type.
+      var sdkMeta = el('span', 'sb-set-src');
+      if (sdkLab) sdkLab.appendChild(sdkMeta);
+      var sdkSeq = 0;
+
+      function paintSdk(typed, note) {
+        if (!sdkMeta) return;
+        clear(sdkMeta);
+        var effective = String(typed || '').trim() || siteSdkVersion;
+        var url = sdkUrlFor(effective);
+        var live = url === M.sdkUrl;
+        var a = el('a', 'sb-set-file', 'view build');
+        a.href = url;
+        a.target = '_blank';
+        a.rel = 'noopener';
+        // "loaded" and "typed" are different claims. The box above is what you are about to
+        // ask for; only after Load is it what the page is running.
+        a.title = (live ? 'Loaded now: ' : 'Not loaded yet, press Load: ') + url;
+        sdkMeta.appendChild(document.createTextNode(' \u00b7 ('));
+        sdkMeta.appendChild(a);
+        sdkMeta.appendChild(document.createTextNode(')'));
+        if (note) sdkMeta.appendChild(document.createTextNode(' \u00b7 ' + note));
+        if (!live) sdkMeta.appendChild(document.createTextNode(' \u00b7 press Load'));
       }
+
+      // A range has to be asked about; an exact pin or a pr: ref already is the answer, so
+      // it never shows a spinner it does not need.
+      function refreshSdk(typed) {
+        var seq = ++sdkSeq;
+        var effective = String(typed || '').trim() || siteSdkVersion;
+        var exact = /^pr:/.test(effective) || /^\d+\.\d+\.\d+(-|$)/.test(effective);
+        paintSdk(typed, exact ? '' : 'resolving\u2026');
+        if (exact) return;
+        resolveSdkVersion(effective).then(function (real) {
+          if (seq !== sdkSeq) return;
+          paintSdk(typed, real ? 'now ' + real : '');
+        });
+      }
+
+      refreshSdk(own.sdkVersion || '');
+      var sdkTimer = null;
+      fields.sdk.addEventListener('input', function () {
+        var typed = fields.sdk.value;
+        if (sdkTimer) clearTimeout(sdkTimer);
+        // Repaint at once so the URL tracks the keystroke, and only the resolve waits.
+        paintSdk(typed, /^pr:|^\d+\.\d+\.\d+(-|$)/.test(String(typed).trim()) ? '' : 'resolving\u2026');
+        sdkTimer = setTimeout(function () { refreshSdk(typed); }, 350);
+      });
       var authWrap = el('div', 'sb-set-f');
       authWrap.appendChild(el('label', null, 'Auth type'));
       var sel = el('select');
