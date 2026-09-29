@@ -3602,13 +3602,19 @@
         if (real && fields.sdk && sdkLab) sdkLab.appendChild(el('span', 'sb-set-src', ' \u00b7 now ' + real));
       });
       // The version says which build was asked for. This is the file that actually loaded,
-      // so a suspect bundle can be opened and read rather than guessed at.
-      var sdkFile = el('a', 'sb-set-file', M.sdkUrl);
-      sdkFile.href = M.sdkUrl;
-      sdkFile.target = '_blank';
-      sdkFile.rel = 'noopener';
-      sdkFile.title = 'Open the SDK bundle this page loaded';
-      fields.sdk.parentNode.appendChild(sdkFile);
+      // so a suspect bundle can be opened and read rather than guessed at. It sits in the
+      // label, beside the resolved version, because the URL in full is too long to read and
+      // the thing you want is one click.
+      if (sdkLab && M.sdkUrl) {
+        var sdkFile = el('a', 'sb-set-file', 'view build');
+        sdkFile.href = M.sdkUrl;
+        sdkFile.target = '_blank';
+        sdkFile.rel = 'noopener';
+        sdkFile.title = M.sdkUrl;
+        sdkLab.appendChild(document.createTextNode(' \u00b7 ('));
+        sdkLab.appendChild(sdkFile);
+        sdkLab.appendChild(document.createTextNode(')'));
+      }
       var authWrap = el('div', 'sb-set-f');
       authWrap.appendChild(el('label', null, 'Auth type'));
       var sel = el('select');

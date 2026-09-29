@@ -3,7 +3,7 @@ import type { Theme } from '../common/schema';
 import { resolveTheme } from '../common/theme';
 import { SDK_CDN_ORIGIN, sdkUrl } from '../common/sdkUrl';
 
-export const RUNTIME_VERSION = '82';
+export const RUNTIME_VERSION = '83';
 
 /**
  * The Markdown renderer for text blocks, shared byte-for-byte with the builder canvas.
@@ -241,7 +241,7 @@ color:var(--sb-muted);font-weight:700;margin:0}
 .sb-set-f{display:flex;flex-direction:column;gap:4px}
 .sb-set-f label{font-size:.78rem;color:var(--sb-muted);font-weight:600}
 .sb-set-f .sb-set-src{font-weight:400;text-transform:none;letter-spacing:0;opacity:.8}
-.sb-set-f .sb-set-file{display:block;margin-top:6px;font:400 11px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;text-transform:none;letter-spacing:0;opacity:.7;word-break:break-all;color:inherit;text-decoration:underline;text-underline-offset:2px}
+.sb-set-f .sb-set-file{font-weight:400;text-transform:none;letter-spacing:0;color:inherit;opacity:.8;text-decoration:underline;text-underline-offset:2px}
 .sb-set-f .sb-set-file:hover{opacity:1}
 .sb-set-body input,.sb-set-body select{font:inherit;font-size:.85rem;padding:7px 10px;
 border:1px solid var(--sb-border);border-radius:var(--sb-radius);background:var(--sb-bg);
