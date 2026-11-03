@@ -59,7 +59,7 @@ await putDoc({
   '/second': { title: 'Second', blocks: [{ type: 'text', text: 'a new page' }] },
 }, baseConfig);
 
-await pg.waitForFunction(() => document.body.textContent.includes('Beta'), { timeout: 15000 });
+await pg.waitForFunction(() => document.body.textContent.includes('Beta'), { timeout: 40000 });
 ok(true, 'an edit made elsewhere appears on the open page');
 ok(await pg.evaluate(() => window.__notReloaded === true),
   'and it updated in place — the page never reloaded');
@@ -84,8 +84,21 @@ await putDoc({
     { type: 'embed', embed: { type: 'liveboard', liveboardId: 'lb-changed', preRender: true, preRenderId: 'live-keep', height: '300px' } },
   ] },
 }, baseConfig);
-await pg.waitForFunction(() => document.body.textContent.includes('Gamma'), { timeout: 15000 });
+await pg.waitForFunction(() => document.body.textContent.includes('Gamma'), { timeout: 40000 });
 ok(await pg.evaluate(() => window.__notReloaded === true), 'a config change also arrives without a reload');
+
+// ---- two quiet polls, then the page stops and offers See latest ----
+await pg.evaluate(() => { window.__pollsSeen = 0; });
+await pg.route('**/version', (route) => { void pg.evaluate(() => { window.__pollsSeen++; }); return route.continue(); });
+await pg.waitForSelector('.sb-latest:not([hidden])', { timeout: 75000 });
+ok((await pg.evaluate(() => window.__pollsSeen)) === 2, 'the page polls twice and then shows See latest');
+await putDoc({ '/': { title: 'Live', blocks: [{ type: 'heading', text: 'Epsilon', level: 1 }] } }, baseConfig);
+await pg.waitForTimeout(3000);
+ok(!(await pg.evaluate(() => document.body.textContent.includes('Epsilon'))), 'and no longer polls on its own');
+await pg.click('.sb-latest');
+await pg.waitForFunction(() => document.body.textContent.includes('Epsilon'), { timeout: 10000 });
+ok(await pg.evaluate(() => document.querySelector('.sb-latest').hidden), 'See latest picks the change up and goes away');
+await pg.unroute('**/version');
 
 // ---- opting out ----
 await putDoc({ '/': { title: 'Live', blocks: [{ type: 'heading', text: 'Gamma', level: 1 }] } },
@@ -96,7 +109,7 @@ await pg.evaluate(() => { window.__pollsSeen = 0; });
 await pg.route('**/version', (route) => { void pg.evaluate(() => { window.__pollsSeen++; }); return route.continue(); });
 await putDoc({ '/': { title: 'Live', blocks: [{ type: 'heading', text: 'Delta', level: 1 }] } },
   { ...baseConfig, live: false });
-await pg.waitForTimeout(6000);
+await pg.waitForTimeout(32000);
 ok(!(await pg.evaluate(() => document.body.textContent.includes('Delta'))),
   'live: false opts a project out of polling entirely');
 

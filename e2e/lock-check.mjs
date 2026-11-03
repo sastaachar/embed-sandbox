@@ -91,13 +91,18 @@ await pg2.click('#lockEditAnyway');
 await pg2.waitForSelector('#lockChip', { state: 'detached', timeout: 5000 });
 ok(true, 'the chip can be dismissed');
 // the dismissal must hold across polls while the same lock stands
-await pg2.waitForTimeout(5000);
+await pg2.waitForTimeout(31000);
 ok(!(await pg2.isVisible('#lockChip').catch(() => false)), 'and stays dismissed while the same lock stands');
-// release, then take a fresh lock: the chip must return
+// two quiet polls have passed: the builder stops polling and offers See latest
+await pg2.waitForSelector('#seeLatest', { timeout: 35000 });
+ok(true, 'after two quiet polls the builder stops and shows See latest');
+// release, then take a fresh lock: the chip must return once each state is seen
 await api(`/api/projects/${PID}/lock`, { method: 'DELETE', headers: auth });
-await pg2.waitForTimeout(5000);
+await pg2.click('#seeLatest');
+await pg2.waitForTimeout(1500);
+// seeing the release restarted polling, so the fresh lock arrives on the next poll
 await api(`/api/projects/${PID}/lock`, { method: 'POST', headers: auth, body: JSON.stringify({ holder: 'Claude' }) });
-await pg2.waitForSelector('#lockChip', { timeout: 15000 });
+await pg2.waitForSelector('#lockChip', { timeout: 35000 });
 ok(true, 'a fresh lock after release shows it again');
 
 await api(`/api/projects/${PID}/lock`, { method: 'DELETE', headers: auth });

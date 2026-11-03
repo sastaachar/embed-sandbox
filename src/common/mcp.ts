@@ -177,8 +177,10 @@ guesses (the document shape, the pre-render contract, the UpdateFilters payload,
 auth trade-offs) is written down here.
 
 Builds shareable ThoughtSpot embed demo sites. Pages are JSON documents rendered by a
-14KB runtime — you never write HTML or JS. The published site updates live: viewers'
-pages re-render within ~5s of any save, and the visual builder follows along too.
+14KB runtime — you never write HTML or JS. The published site updates live: a freshly
+opened page polls twice at 30s and re-renders on a change, then stops polling and shows a
+"See latest" button (each poll is a Worker invocation, and the free tier caps those per
+day). The visual builder follows the same rule.
 
 ## Connecting
 
@@ -321,7 +323,7 @@ config: name, thoughtSpotHost, sdkVersion (any npm version, default latest), aut
 auth, theme, css, header, footer, embedDefaults, modals, catalog, showEmbedErrors,
 showCode (default true: a \u2039/\u203A toggle on the published site shows each page's SDK
 code with a fork-and-edit link), themeEmbed (default true: pushes the theme into embeds as --ts-var-*), live
-(default true: published pages poll /version and re-render on change).
+(default true: published pages poll /version twice at 30s, re-render on change, then offer See latest).
 
 page.codeOverride replaces the \`‹/›\` code view per flavour — see the page schema above.
 

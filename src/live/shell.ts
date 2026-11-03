@@ -3,7 +3,7 @@ import type { Theme } from '../common/schema';
 import { resolveTheme } from '../common/theme';
 import { SDK_CDN_ORIGIN, sdkUrl } from '../common/sdkUrl';
 
-export const RUNTIME_VERSION = '85';
+export const RUNTIME_VERSION = '86';
 
 /**
  * The Markdown renderer for text blocks, shared byte-for-byte with the builder canvas.
@@ -130,6 +130,11 @@ border-radius:50%;border:1px solid var(--sb-border);background:var(--sb-surface)
 color:var(--sb-text);font:600 15px/1 ui-monospace,Menlo,monospace;cursor:pointer;
 box-shadow:0 4px 14px rgba(15,18,45,.18)}
 .sb-code-fab:hover{border-color:var(--sb-primary);color:var(--sb-primary)}
+.sb-latest{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:90;
+padding:8px 14px;border-radius:999px;border:1px solid var(--sb-border);background:var(--sb-surface);
+color:var(--sb-text);font:inherit;font-size:12.5px;font-weight:600;line-height:1;cursor:pointer;box-shadow:0 4px 14px rgba(15,18,45,.18)}
+.sb-latest:hover{border-color:var(--sb-primary);color:var(--sb-primary)}
+.sb-latest[hidden]{display:none}
 .sb-code-overlay[hidden]{display:none}
 .sb-code-overlay{position:fixed;inset:auto 18px 74px 18px;max-width:900px;margin-left:auto;
 height:min(70vh,640px);z-index:95;display:flex;flex-direction:column;

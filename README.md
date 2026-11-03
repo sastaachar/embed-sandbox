@@ -631,7 +631,9 @@ GET /api/projects/<id>/manifest   -> the full manifest   # fetched only when it 
 The manifest endpoint returns exactly what the shell inlines (same `buildManifest`),
 so theme derivation stays server-side and a live update cannot drift from a fresh
 load. An embed whose config is byte-identical keeps its iframe; only what changed
-remounts. Polling pauses while the tab is hidden and catches up on focus.
+remounts. A page polls twice at 30s and then stops, leaving a **See latest** pill; a
+change found by either path restarts the two polls. Each poll is a Worker invocation,
+and the free tier allows 100k a day, which a 4s poll from a few open tabs exhausted.
 
 `live: false` in site config opts a project out entirely.
 

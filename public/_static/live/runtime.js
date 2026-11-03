@@ -2810,13 +2810,17 @@
    * someone presses reload.
    *
    * Only /version repeats (one number); the full manifest is fetched only when that
-   * number moves. Polling pauses while the tab is hidden and catches up on focus,
-   * so a background tab costs nothing.
+   * number moves. Every poll is a Worker invocation, and the free tier caps those per
+   * day, so a page polls twice at 30s and then stops: a "See latest" pill takes over,
+   * and a change found by either path starts the two polls again.
    */
-  var LIVE_POLL_MS = 4000;
+  var LIVE_POLL_MS = 30000;
+  var LIVE_QUIET_POLLS = 2;
   var liveVersion = M.updatedAt || 0;
   var liveTimer = null;
   var liveBusy = false;
+  var liveQuiet = 0;
+  var livePill = null;
 
   function specOf(path, idx) {
     var page = pages[path];
@@ -2870,32 +2874,60 @@
     render();
   }
 
-  function checkVersion() {
-    if (liveBusy || document.hidden) return;
+  function startLivePolling() {
+    liveQuiet = 0;
+    if (livePill) livePill.hidden = true;
+    if (liveTimer) return;
+    liveTimer = setInterval(function () {
+      if (document.hidden) return;
+      checkVersion(false);
+    }, LIVE_POLL_MS);
+  }
+
+  function stopLivePolling() {
+    if (liveTimer) clearInterval(liveTimer);
+    liveTimer = null;
+    if (!livePill) {
+      livePill = el('button', 'sb-latest', 'See latest');
+      livePill.type = 'button';
+      livePill.title = 'Check for a newer version of this page';
+      livePill.addEventListener('click', function () { checkVersion(true); });
+      document.body.appendChild(livePill);
+    }
+    livePill.hidden = false;
+    livePill.textContent = 'See latest';
+  }
+
+  function checkVersion(manual) {
+    if (liveBusy) return;
     liveBusy = true;
+    if (manual && livePill) livePill.textContent = 'Checking…';
     fetch('/api/projects/' + M.projectId + '/version', { cache: 'no-store' })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (body) {
-        if (!body || !body.updatedAt || body.updatedAt === liveVersion) return null;
+        if (!body || !body.updatedAt || body.updatedAt === liveVersion) {
+          if (manual) {
+            livePill.textContent = 'Up to date';
+            setTimeout(function () { if (livePill) livePill.textContent = 'See latest'; }, 1500);
+          } else if (++liveQuiet >= LIVE_QUIET_POLLS) {
+            stopLivePolling();
+          }
+          return null;
+        }
         return fetch('/api/projects/' + M.projectId + '/manifest', { cache: 'no-store' })
           .then(function (r) { return r.ok ? r.json() : null; })
           .then(function (next) {
             if (!next) return;
             applyManifest(next);
             console.info('[' + NS + '] updated to version ' + next.updatedAt);
+            startLivePolling();
           });
       })
-      .catch(function () { /* offline or mid-deploy: try again on the next tick */ })
+      .catch(function () { /* offline or mid-deploy: the next poll or click tries again */ })
       .then(function () { liveBusy = false; });
   }
 
-  if (M.project.live !== false) {
-    liveTimer = setInterval(checkVersion, LIVE_POLL_MS);
-    document.addEventListener('visibilitychange', function () {
-      if (!document.hidden) checkVersion();
-    });
-    window.addEventListener('focus', checkVersion);
-  }
+  if (M.project.live !== false) startLivePolling();
 
   // ------------------------------------------------------------- code viewer
   // Every published page can show the SDK code that would power it — the same

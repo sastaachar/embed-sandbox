@@ -73,8 +73,9 @@ function nextPreRenderId(doc: Doc): string {
   for (let n = 1; ; n += 1) if (!taken.has(`prerender-${n}`)) return `prerender-${n}`;
 }
 
-/** Same cadence the published pages poll at. */
-const LIVE_POLL_MS = 4000;
+/** Same rule as the published pages: two polls at 30s, then stop and offer See latest. */
+const LIVE_POLL_MS = 30000;
+const LIVE_QUIET_POLLS = 2;
 
 
 type Dialog =
@@ -140,35 +141,51 @@ export function App() {
   // it moves — but never on top of unsaved edits: say so and let the user decide.
   const seenVersion = useRef<number | null>(null);
   const prevLock = useRef<EditLock | null>(null);
+  const quietPolls = useRef(0);
+  const primed = useRef(false);
+  const [pollStopped, setPollStopped] = useState(false);
   // The container the canvas is editing NOW (page or modal) — for callbacks wired once.
   const containerRef = useRef<ReturnType<typeof page> | null>(null);
+  const tick = useCallback(async (manual = false): Promise<boolean> => {
+    const v = await projectVersion().catch(() => null);
+    if (v === null) return false;
+    const lockChanged = Boolean(v.lock) !== Boolean(prevLock.current);
+    if (lockChanged) {
+      setLockDismissed(false);
+      quietPolls.current = 0;
+      setPollStopped(false);
+    }
+    prevLock.current = v.lock;
+    setAgentLock(v.lock);
+    if (seenVersion.current === null) { seenVersion.current = v.updatedAt; return false; }
+    if (v.updatedAt === seenVersion.current) {
+      if (manual) setStatus('up to date', 'ok');
+      else if (!lockChanged && ++quietPolls.current >= LIVE_QUIET_POLLS) setPollStopped(true);
+      return false;
+    }
+    seenVersion.current = v.updatedAt;
+    quietPolls.current = 0;
+    setPollStopped(false);
+    if (b.dirty) {
+      setStatus('changed elsewhere — save or reload to pick it up', 'err');
+      return true;
+    }
+    await reload();
+    setStatus('updated — picked up a change made over MCP', 'ok');
+    return true;
+  }, [reload, b.dirty]);
   useEffect(() => {
-    if (!ready) return;
-    let live = true;
-    const tick = async () => {
-      const v = await projectVersion().catch(() => null);
-      if (!live || v === null) return;
-      if (Boolean(v.lock) !== Boolean(prevLock.current)) setLockDismissed(false);
-      prevLock.current = v.lock;
-      setAgentLock(v.lock);
-      if (seenVersion.current === null) { seenVersion.current = v.updatedAt; return; }
-      if (v.updatedAt === seenVersion.current) return;
-      seenVersion.current = v.updatedAt;
-      if (b.dirty) {
-        setStatus('changed elsewhere — save or reload to pick it up', 'err');
-        return;
-      }
-      await reload();
-      setStatus('updated — picked up a change made over MCP', 'ok');
-    };
-    const id = setInterval(tick, LIVE_POLL_MS);
-    void tick();
-    return () => { live = false; clearInterval(id); };
-  }, [ready, reload, b.dirty]);
+    if (!ready || pollStopped) return;
+    if (!primed.current) { primed.current = true; void tick(); }
+    const id = setInterval(() => { if (!document.hidden) void tick(); }, LIVE_POLL_MS);
+    return () => clearInterval(id);
+  }, [ready, pollStopped, tick]);
 
   // Our own save moves the clock too; adopt it so it does not read as someone else's.
   const adoptVersion = (v: number | undefined) => {
     if (typeof v === 'number') seenVersion.current = v;
+    quietPolls.current = 0;
+    setPollStopped(false);
   };
 
   const openWith = useCallback(async (token: string, remember: boolean) => {
@@ -492,6 +509,11 @@ export function App() {
             {agentLock.holder} is editing
             <button id="lockEditAnyway" title="Hide until the lock changes" onClick={() => setLockDismissed(true)}>✕</button>
           </span>
+        )}
+        {pollStopped && (
+          <button id="seeLatest" title="Live updates paused — check for a change made elsewhere" onClick={() => void tick(true)}>
+            See latest
+          </button>
         )}
         <span id="status" className={b.status.kind}>{b.status.text}</span>
         <button id="save" className="primary" onClick={() => void save()}>Save</button>
