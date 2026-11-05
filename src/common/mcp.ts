@@ -1548,6 +1548,12 @@ export async function handleMcp(
   projectId: string | null,
 ): Promise<Response> {
   if (request.method === 'GET') {
+    // A Streamable HTTP client GETs with Accept: text/event-stream to open a
+    // server-initiated stream. There is none; anything but 405 reads as a stream that
+    // ended and the client reconnects in a tight loop (~4 requests/s per client).
+    if (/text\/event-stream/i.test(request.headers.get('accept') || '')) {
+      return new Response(null, { status: 405, headers: { allow: 'POST' } });
+    }
     // The manual, for a human in a browser or an agent probing before it connects.
     // Also mounted at /mcp/manual.md, the linkable spelling.
     return new Response(manualMarkdown(new URL(request.url).origin), {
